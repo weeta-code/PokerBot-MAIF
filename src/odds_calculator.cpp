@@ -1,4 +1,4 @@
-#include "odds_calculator.h"
+#include "../include/odds_calculator.h"
 
 OddsCalculator::OddsCalculator(int iterations)
     : monte_carlo_iterations(iterations) {}

@@ -4,8 +4,8 @@
 #include <chrono>
 #include <thread>
 #include <cstdlib>
-#include "odds_calculator.h"
-#include "risk_profiler.h"
+#include "../include/odds_calculator.h"
+#include "../include/risk_profiler.h"
 
 using namespace std;
 

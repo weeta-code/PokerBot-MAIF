@@ -2,3 +2,4 @@
 *.exe
 *.dylib
 build/
+.DS_Store

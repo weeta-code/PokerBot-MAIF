@@ -2,6 +2,7 @@
 #define EQUITY_MODULE_H
 
 #include <array>
+#include <iostream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -31,6 +32,13 @@ struct Card {
 
   bool operator==(const Card &other) const {
     return rank == other.rank && suit == other.suit;
+  }
+
+  friend std::ostream &operator<<(std::ostream &os, const Card &c) {
+    const char *ranks = "23456789TJQKA";
+    const char *suits = "cdhs";
+    os << ranks[c.rank] << suits[c.suit];
+    return os;
   }
 };
 
@@ -63,12 +71,10 @@ public:
                   const std::vector<double> &villain_bucket_distribution,
                   double pot_size, street street);
 
-  // Cache control (Optional)
   void enable_cache();
   void clear_cache();
 
 private:
-  // Internal Helpers
   int bucketize_hand(const std::vector<Card> &hero_hand,
                      const std::vector<Card> &board_cards, street street);
 
@@ -77,7 +83,6 @@ private:
 
   double compute_baseline_value(double equity, double pot_size);
 
-  // Internal Hand Evaluation Logic
   int evaluate_7_cards(const std::vector<Card> &cards);
   int evaluate_5_cards(const std::vector<Card> &cards);
 };

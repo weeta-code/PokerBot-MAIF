@@ -1,93 +1,89 @@
 #ifndef GAME_STATE_MODULE_H
 #define GAME_STATE_MODULE_H
 
-#include <vector>
-#include <string>
-#include <iostream>
+#include "equity.h"
+#include "risk_profiler.h"
 #include <algorithm>
+#include <iostream>
 #include <random>
-#include "equity.h"        
-#include "risk_profiler.h" 
-//#include "odds_calculator.h" 
+#include <string>
+#include <vector>
 
 using namespace std;
 
-enum class PlayMode {
-    AUTONOMOUS,
-    GUIDED
-};
+enum class PlayMode { AUTONOMOUS, GUIDED };
 
 enum class Stage {
-    PREFLOP,
-    FLOP,
-    TURN,
-    RIVER,
-    SHOWDOWN,
+  PREFLOP,
+  FLOP,
+  TURN,
+  RIVER,
+  SHOWDOWN,
 };
 
 // defining a comprehensive player profile
 struct Player {
-    string id; 
-    vector<Card> hole_cards;
-    int stack; 
-    int current_bet; // amount to bet in the current street
-    bool is_folded;
-    bool is_all_in;
-    bool is_human;
-    
-    // useful stats for risk profiling
-    int times_folded;
-    int times_raised;
-    int times_called;
-    int hands_played;
-    
-    PlayerProfile profile;
+  string id;
+  vector<Card> hole_cards;
+  int stack;
+  int current_bet; // amount to bet in the current street
+  bool is_folded;
+  bool is_all_in;
+  bool is_human;
 
-    Player(string _id, double _stack, bool _is_human);
+  // useful stats for risk profiling
+  int times_folded;
+  int times_raised;
+  int times_called;
+  int hands_played;
+
+  PlayerProfile profile;
+
+  Player(string _id, double _stack, bool _is_human);
 };
 
 struct GameState {
-    vector<Player> players;
-    vector<Card> deck;
-    vector<Card> community_cards;
-    
-    PlayMode play_mode;
-    Stage stage;
-    int pot_size;
-    int current_street_highest_bet;
-    
-    int num_players;
-    int dealer_index;
-    int current_player_index;
+  vector<Player> players;
+  vector<Card> deck;
+  vector<Card> community_cards;
 
-    // incapsulate other modules to external engines
-    RiskProfiler* risk_profiler;
-    OddsCalculator* odds_calculator;
+  PlayMode play_mode;
+  Stage stage;
+  int pot_size;
+  int current_street_highest_bet;
 
-    GameState(RiskProfiler* rp, OddsCalculator* oc);
+  int num_players;
+  int dealer_index;
+  int current_player_index;
 
-    // init funcs
-    void init_game_setup(); 
-    void init_deck();
-    void shuffle_deck();
-    
-    // step by step in a street
-    void start_hand();
-    void deal_community_cards(); // for flop/turn/river
-    void next_street();
-    void resolve_winner();
-    bool is_hand_over();
-    bool is_betting_round_over();
+  // incapsulate other modules to external engines
+  RiskProfiler *risk_profiler;
+  EquityModule *equity_module;
 
-    // action func
-    Card draw_card();
-    // returns true if action is valid
-    bool record_action(int player_idx, string action, double amount);
-    
-    // helper funcs
-    int get_active_player_count();
-    Player* get_current_player();
-    void next_player();
+  GameState(RiskProfiler *rp, EquityModule *em);
+
+  // init funcs
+  void init_game_setup();
+  void init_deck();
+  void shuffle_deck();
+
+  // step by step in a street
+  void start_hand();
+  void deal_community_cards(); // for flop/turn/river
+  void next_street();
+  void resolve_winner();
+  bool is_hand_over();
+  bool is_betting_round_over();
+
+  // action func
+  Card draw_card();
+  // returns true if action is valid
+  bool record_action(int player_idx, string action, double amount);
+
+  // helper funcs
+  int get_active_player_count();
+  Player *get_current_player();
+  void next_player();
 };
 
 #endif

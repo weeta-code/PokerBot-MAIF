@@ -11,6 +11,7 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 # src files
 set(SOURCES
     src/main.cpp
+    src/game_state.cpp
     src/odds_calculator.cpp
     src/risk_profiler.cpp
 )

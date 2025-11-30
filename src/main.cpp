@@ -1,134 +1,136 @@
 #include <iostream>
 #include <memory>
 #include <string>
-#include <chrono>
 #include <thread>
-#include <cstdlib>
-#include "../include/odds_calculator.h"
+#include <chrono>
+#include "../include/game_state.h"
+#include "../include/equity.h"
+//#include "odds_calculator.h" 
 #include "../include/risk_profiler.h"
 
 using namespace std;
 
-enum class PlayMode {
-    AUTONOMOUS,
-    GUIDED
-};
-
-typedef struct {
-    double riskTolerance;  // 1 means we can go all in, 0 means we don't want to lose anything
-    string playerID; // player unique identifier
-    PlayMode mode;
-    PlayerProfile betStyle; //TODO maybe change the PlayerProfile name to something that can differentiate between PlayerConfig
-} PlayerConfig;
-
-typedef struct {
-    std::string hand[2]; // hole cards 
-    // int stackSize;   // player current chips
-    int potSize;     // total pot
-    int roundNumber;    // preflop, flop, turn, river as 0, 1, 2, 3
-} GameState; // TODO figure out how to track player hands, via gamestate or playerconfig
-
-
-PlayerConfig configurePlayer() {
-    PlayerConfig playerCFG;
-    playerCFG.playerID = std::to_string(rand());
-
-    cout << "Starting Poker Engine\n";
-    cout << "Enter Risk Tolerance ∈ (0.0, 1.0)\n";
-    cin >> playerCFG.riskTolerance;
-
-    int modeChoice;
-    cout << "Enter Engine Mode:\n  0. Autonomous\n  1. Guided\n";
-    cin >> modeChoice;
-
-    (modeChoice == 0) ? playerCFG.mode = PlayMode::AUTONOMOUS : playerCFG.mode = PlayMode::GUIDED;
-
-    return playerCFG;
-}
-
-GameState initGameState() {
-    GameState state;
-    cout << "Enter your hand (with space in between): \n";
-    cin >> state.hand[0] >> state.hand[1];
-    cout << "Enter current pot size: \n";
-    cin >> state.potSize;
-    state.roundNumber = 0; // Start at preflop
-    return state;
-}
-
-
-void playRound(OddsCalculator& oddsCalc, RiskProfiler& riskProf, 
-               const PlayerConfig& playerCFG, GameState& state) {
-    // get win odds 
-    // TODO implement string input parsing to read player input hand
-    // TODO implement Monte Carlo and use them later
-    double winProb = oddsCalc.calculate_baseline_hand_odds("A", 1);
-    
-
-    // update risk score based on game state
-    // with placeholder values
-    double riskScore = riskProf.calculate_risk_score(
-        playerCFG.playerID, "call", state.potSize * 0.5, state.potSize, winProb
+// bot logic
+string get_bot_decision(GameState& state, Player* bot) {
+    // use odds_calculator to evaluate hands and calculate odds
+    double win_prob = state.odds_calculator->calculate_win_probability(
+        bot->hole_cards, 
+        state.community_cards, 
+        state.get_active_player_count() - 1
     );
 
-    // combine odds and risk to make recommendation
-    // TODO implement the methodology? weighted? wtv
-    // placeholder
-    double decisionScore = winProb - riskScore;
+    // get the bot's risk profiler
+    // analyze if the human player is bluffing
+    double risk_score = state.risk_profiler->calculate_risk_score(
+        "MYSELF",
+        "check", // TODO: get human player's last action
+        0, 
+        state.pot_size, 
+        win_prob
+    );
 
-    cout << "Info Print";
-    cout << "Hand: " << state.hand << endl;
-    cout << "Win Probability: " << winProb * 100 << "%\n";
-    cout << "Risk Score: " << riskScore * 100 << "%\n";
-    cout << "Decision Score: " << decisionScore << "%\n";
+    // TODO: Monte Carlo process insert here
+    // place holder: poker expected value formula -> EV = (%W * $W) – (%L * $L)
+    double expected_value = win_prob * (state.pot_size + state.current_street_highest_bet) - 
+                (1.0 - win_prob) * (state.current_street_highest_bet - bot->current_bet);
 
-    // TODO refine bot action logic and decision threshold
-    if (playerCFG.mode == PlayMode::AUTONOMOUS) {
-        if (decisionScore > 0.2)
-            cout << "BOT Says Raise.\n";
-        else if (decisionScore > 0.1)
-            cout << "BOT Says Call.\n";
-        else
-            cout << "BOT Says Fold.\n";
+    // placeholder thresholding based on expected_value and risk
+    if  (expected_value > 50 && win_prob > 0.6) {
+        return "raise";
+    } else if (win_prob > 0.3 || (state.current_street_highest_bet == bot->current_bet)) {
+        return "call";
     } else {
-        cout << "SUGGESTED MOVE: ";
-        if (decisionScore > 0.3) cout << "Raise\n";
-        else if (decisionScore > 0.1) cout << "Call\n";
-        else cout << "Fold\n";
+        return "fold";
     }
-
-    // TODO implement state changes
-    // placeholder 
-    riskProf.update_stack(playerCFG.playerID, 10 - state.potSize * 0.5);
-    // state.stackSize *= (1.0 - riskScore * 0.1);
-    state.potSize *= 1.1;
-    state.roundNumber++;
-
-    cout << "State Print";
-    // cout << "Next State Size: " << state.stackSize << "%\n";
-    cout << "Next Pot Size: " << state.potSize << "\n";
-    cout << "Next Round #: " << state.roundNumber << "\n";
 }
 
-// TODO maybe put state logic in another file? discuss later
 int main() {
-    // init
-    PlayerConfig config = configurePlayer();
-    GameState state = initGameState();
-    // is stack tracker per player or for the whole game state
-    // StackTracker tracker = 
+    // init modules
+    OddsCalculator odds_calc; // TODO need its definition somehwere
+    RiskProfiler risk_prof;
+    
+    // GameState takes pointers to tools it needs to update which is RiskProfiler
+    GameState state(&risk_prof, &odds_calc);
 
-    OddsCalculator oddsCalculator;
-    RiskProfiler riskProfiler;
+    // init up game state
+    state.init_game_setup();
 
-    cout << "Hello World!";
+    // core game loop
+    bool game_running = true;
+    while (game_running) {
+        state.start_hand();
 
-    // simulate some stuff
-    for (int round = 0; round < 4; ++round) {
-        playRound(oddsCalculator, riskProfiler, config, state);
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        while (state.stage != Stage::SHOWDOWN && state.get_active_player_count() > 1) {
+            
+            // betting round
+            // simplified logic
+            // each player acts once per street or until bets match
+            
+            int players_to_act = state.get_active_player_count();
+            int acts_remaining = players_to_act;
+            
+            while (acts_remaining > 0) {
+                Player* current = state.get_current_player();
+                
+                if (current->is_folded || current->is_all_in) {
+                    state.next_player();
+                    continue;
+                }
+
+                cout << "\n> Turn: " << current->id << " (Pot: " << state.pot_size << ") \n";
+                
+                string action;
+                double amount = 0;
+
+                if (current->is_human) {
+                    // player input things
+                    if (state.play_mode == PlayMode::GUIDED) {
+                        // GUIDED MODE: could print engine advice here
+                        double odds = odds_calc.calculate_win_probability(current->hole_cards, state.community_cards, state.num_players-1);
+                        cout << "[ENGINE] Win Probability: " << (odds*100) << "%\n";
+                    }
+
+                    cout << "Action (call, raise, fold): ";
+                    cin >> action;
+                    if (action == "raise") {
+                        cout << "Amount (total bet): ";
+                        cin >> amount;
+                    }
+                } else {
+                    // bot turn, bot logic
+                    // sleep so everything doesn't print to the console all at once
+                    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                    action = get_bot_decision(state, current);
+                    
+                    if (action == "raise") {
+                        // TODO: refine logic to calculate the bet amount for the bot, or maybe this is good
+                        amount = state.current_street_highest_bet + (state.pot_size * 0.5); 
+                    }
+                }
+
+                // execute and record actions
+                bool valid = state.record_action(state.current_player_index, action, amount);
+                if (!valid) {
+                    // forces fold if input action is not valid
+                    cout << "Invalid Move \n";
+                    state.record_action(state.current_player_index, "fold", 0);
+                }
+                
+                state.next_player();
+                acts_remaining--;
+            }
+
+            // finish turn and move to next street
+            state.next_street();
+        }
+
+        state.resolve_winner();
+        
+        cout << "Play another hand? (1=yes, 0=no): ";
+        int cont;
+        cin >> cont;
+        if (cont == 0) game_running = false;
     }
 
-    cout << "Goodbye!" << "%\n";
     return 0;
 }

@@ -1,53 +1,62 @@
 #ifndef RISK_PROFILER_H
 #define RISK_PROFILER_H
 
-#include <vector>
 #include <map>
 #include <string>
+#include <vector>
 
-struct PlayerProfile {
-    double aggression_frequency;    
-    double bluff_frequency;          
-    double avg_bet_size_ratio;        
-    int hands_observed;            
+enum ProfileLabel {
+  PROFILE_RISK_AVERSE,
+  PROFILE_RISK_NEUTRAL,
+  PROFILE_RISK_PRONE
 };
 
-struct StackTracker {
-    double initial_stack;
-    double current_stack;
-    double total_committed_this_hand;
-    std::vector<double> bet_history;   
+struct PlayerProfile {
+  int hands_observed;
 
-    double get_stack_percentage_committed() const;
+  // Betting stats
+  int hands_played;
+  int hands_voluntarily_entered; // VPIP
+  int hands_raised_preflop;      // PFR
+
+  int total_bets;
+  int total_calls;
+
+  // Stack tracking
+  double stack_size;
+  double total_wagered;
+  double current_bet_ratio; // wagered / initial_stack
+
+  std::vector<double> bucket_histogram;
+
+  ProfileLabel profile_label;
 };
 
 class RiskProfiler {
 private:
-    std::map<std::string, PlayerProfile> player_profiles;
-    std::map<std::string, StackTracker> stack_trackers;
-    double risk_tolerance;             
+  std::map<std::string, PlayerProfile> player_profiles;
+
+  void update_profile_label(const std::string &player_id);
 
 public:
-    RiskProfiler(double risk_tolerance = 0.5);
+  RiskProfiler(double risk_tolerance = 0.5);
 
-    void add_player(const std::string& player_id, double initial_stack);
+  void add_player(const std::string &player_id, double initial_stack);
 
-    void update_player_profile(const std::string& player_id,
-                               const std::string& action,
-                               double bet_amount,
-                               double pot_size);
+  void update_player_profile(const std::string &player_id,
+                             const std::string &action, double bet_amount,
+                             double pot_size);
 
-    void update_stack(const std::string& player_id, double amount);
+  void update_stack(const std::string &player_id, double amount);
 
-    double calculate_risk_score(const std::string& player_id,
-                               const std::string& action,
-                               double bet_amount,
-                               double pot_size,
-                               double adjusted_win_probability) const;
+  double calculate_risk_score(const std::string &player_id,
+                              const std::string &action, double bet_amount,
+                              double pot_size,
+                              double adjusted_win_probability) const;
 
-    PlayerProfile get_player_profile(const std::string& player_id) const;
+  PlayerProfile get_player_profile(const std::string &player_id) const;
 
-    void reset_hand();
+  void reset_hand();
 };
 
-#endif 
+#endif

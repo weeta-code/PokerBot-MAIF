@@ -3,17 +3,17 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-project(PokerBotMAIF VERSION 1.0 LANGUAGES CXX)
+project(PokerBot)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 
 # header files
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
 # src files
-set(SOURCES
-    src/main.cpp
-    src/odds_calculator.cpp
-    src/risk_profiler.cpp
-)
+file(GLOB_RECURSE SOURCES "src/*.cpp")
 
 # executable
 add_executable(${PROJECT_NAME} ${SOURCES})
@@ -21,7 +21,7 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 # include warnings
 target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -pedantic)
 
-# output directory (so binaries go into /build/bin)
+# output directory
 set_target_properties(${PROJECT_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/build/bin
 )

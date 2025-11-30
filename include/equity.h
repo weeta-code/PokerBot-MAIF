@@ -1,18 +1,37 @@
 #ifndef EQUITY_MODULE_H
 #define EQUITY_MODULE_H
 
-#include <vector>
-#include <string>
 #include <array>
+#include <string>
+#include <utility>
+#include <vector>
 
-enum Rank { TWO, THREE, FOUR, FIVE, SIX, SEVEN, EIGHT, NINE, TEN, JACK, QUEEN, KING, ACE };
+enum Rank {
+  TWO,
+  THREE,
+  FOUR,
+  FIVE,
+  SIX,
+  SEVEN,
+  EIGHT,
+  NINE,
+  TEN,
+  JACK,
+  QUEEN,
+  KING,
+  ACE
+};
 enum Suit { CLUBS, DIAMONDS, HEARTS, SPADES };
 
 struct Card {
-    Rank rank;
-    Suit suit;
+  Rank rank;
+  Suit suit;
 
-    Card(Rank r, Suit s) : rank(r), suit(s) {}
+  Card(Rank r, Suit s) : rank(r), suit(s) {}
+
+  bool operator==(const Card &other) const {
+    return rank == other.rank && suit == other.suit;
+  }
 };
 
 enum BucketID {
@@ -34,34 +53,33 @@ struct EquitySummary {
   double baseline;
 };
 
-enum street {
-  PRE,
-  FLOP,
-  TURN,
-  RIVER
-};
+enum street { PRE, FLOP, TURN, RIVER };
 
 class EquityModule {
+public:
+  EquitySummary
+  summarize_state(const std::vector<Card> &hero_hole_cards,
+                  const std::vector<Card> &board_cards,
+                  const std::vector<double> &villain_bucket_distribution,
+                  double pot_size, street street);
+
+  // Cache control (Optional)
+  void enable_cache();
+  void clear_cache();
+
 private:
-  int monte_carlo_iterations;  
+  // Internal Helpers
+  int bucketize_hand(const std::vector<Card> &hero_hand,
+                     const std::vector<Card> &board_cards, street street);
 
-  int bucketize_hand(std::vector<Card> hero_hand, std::vector<Card> board_cards, std::string street);
-
-  double compute_equity_vs_range(std::vector<Card> hero_hand, std::vector<Card> board_cards, std::vector<double> villain_bucket_distribution);
-
-  std::pair<Card, Card> sample_villain_hand_from_bucket(BucketID);
+  double compute_equity_vs_range(
+      int hero_bucket, const std::vector<double> &villain_bucket_distribution);
 
   double compute_baseline_value(double equity, double pot_size);
 
-  double evaluate_showdown(std::vector<Card> hero_hand, std::vector<Card> villain_hand, std::vector<Card> full_board);
-
-  std::vector<std::vector<Card>> generate_remaining_boards(std::vector<Card> board_cards);
-public:
-  EquityModule(int iterations = 10000);
-  void set_iterations(int iterations);
-
-  EquitySummary summarize_state(std::vector<Card> hero_hole_cards, std::vector<Card> board_cards, 
-                                std::vector<double> villain_bucket_distribution, double pot_size, street street);
+  // Internal Hand Evaluation Logic
+  int evaluate_7_cards(const std::vector<Card> &cards);
+  int evaluate_5_cards(const std::vector<Card> &cards);
 };
 
 #endif

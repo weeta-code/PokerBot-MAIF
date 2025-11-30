@@ -1,71 +1,127 @@
-#include "risk_profiler.h"
-#include <cmath>
+#include "../include/risk_profiler.h"
+#include <iostream>
+#include <numeric>
 
-// TODO: StackTracker implementation
-double StackTracker::get_stack_percentage_committed() const {
-    if (initial_stack == 0.0) return 0.0;
-    return (total_committed_this_hand / initial_stack) * 100.0;
+RiskProfiler::RiskProfiler(double /*risk_tolerance*/) {
+  // Constructor
 }
 
-// TODO: RiskProfiler implementation
-RiskProfiler::RiskProfiler(double risk_tolerance)
-    : risk_tolerance(risk_tolerance) {}
+void RiskProfiler::add_player(const std::string &player_id,
+                              double initial_stack) {
+  PlayerProfile profile;
+  profile.hands_observed = 0;
+  profile.hands_played = 0;
+  profile.hands_voluntarily_entered = 0;
+  profile.hands_raised_preflop = 0;
+  profile.total_bets = 0;
+  profile.total_calls = 0;
 
-void RiskProfiler::add_player(const std::string& player_id, double initial_stack) {
-    // Initialize player profile with neutral defaults
-    PlayerProfile profile;
-    profile.aggression_frequency = 0.5;
-    profile.bluff_frequency = 0.1;
-    profile.avg_bet_size_ratio = 0.5;
-    profile.hands_observed = 0;
-    player_profiles[player_id] = profile;
+  profile.stack_size = initial_stack;
+  profile.total_wagered = 0;
+  profile.current_bet_ratio = 0;
 
-    // Initialize stack tracker
-    StackTracker tracker;
-    tracker.initial_stack = initial_stack;
-    tracker.current_stack = initial_stack;
-    tracker.total_committed_this_hand = 0.0;
-    stack_trackers[player_id] = tracker;
+  profile.profile_label = ProfileLabel::PROFILE_RISK_NEUTRAL;
+
+  player_profiles[player_id] = profile;
 }
 
-void RiskProfiler::update_player_profile(const std::string& player_id,
-                                         const std::string& action,
+void RiskProfiler::update_player_profile(const std::string &player_id,
+                                         const std::string &action,
                                          double bet_amount,
-                                         double pot_size) {
-    // TODO: Update player profile based on observed actions
-    // Track aggression, bet sizing patterns, etc.
-}
+                                         double /*pot_size*/) {
+  if (player_profiles.find(player_id) == player_profiles.end())
+    return;
 
-void RiskProfiler::update_stack(const std::string& player_id, double amount) {
-    if (stack_trackers.find(player_id) != stack_trackers.end()) {
-        stack_trackers[player_id].current_stack -= amount;
-        stack_trackers[player_id].total_committed_this_hand += amount;
-        stack_trackers[player_id].bet_history.push_back(amount);
+  PlayerProfile &profile = player_profiles[player_id];
+
+  // Update stack
+  if (bet_amount > 0) {
+    profile.stack_size -= bet_amount;
+    profile.total_wagered += bet_amount;
+  }
+
+  // Update stats
+  if (action == "bet" || action == "raise") {
+    profile.total_bets++;
+    if (profile.hands_observed >
+        0) { // Assuming preflop logic handled elsewhere or simplified
+             // In real system, check street
     }
+  } else if (action == "call") {
+    profile.total_calls++;
+  }
+
+  update_profile_label(player_id);
 }
 
-double RiskProfiler::calculate_risk_score(const std::string& player_id,
-                                         const std::string& action,
-                                         double bet_amount,
-                                         double pot_size,
-                                         double adjusted_win_probability) const {
-    // TODO: Implement risk scoring algorithm
-    // Consider: stack depth, opponent tendencies, pot odds, win probability
-    return 0.5; // Placeholder
+void RiskProfiler::update_stack(const std::string &player_id, double amount) {
+  if (player_profiles.find(player_id) != player_profiles.end()) {
+    player_profiles[player_id].stack_size = amount;
+  }
 }
 
-PlayerProfile RiskProfiler::get_player_profile(const std::string& player_id) const {
-    auto it = player_profiles.find(player_id);
-    if (it != player_profiles.end()) {
-        return it->second;
-    }
-    return PlayerProfile(); // Return default if not found
+double
+RiskProfiler::calculate_risk_score(const std::string &player_id,
+                                   const std::string & /*action*/,
+                                   double bet_amount, double /*pot_size*/,
+                                   double /*adjusted_win_probability*/) const {
+
+  if (player_profiles.find(player_id) == player_profiles.end())
+    return 0.5;
+
+  const PlayerProfile &profile = player_profiles.at(player_id);
+
+  // Risk score based on % of stack wagered and aggression
+  double stack_risk = 0.0;
+  double initial = profile.stack_size + profile.total_wagered; // Approx
+  if (initial > 0) {
+    stack_risk = (bet_amount + profile.total_wagered) / initial;
+  }
+
+  // Adjust by profile
+  double multiplier = 1.0;
+  if (profile.profile_label == PROFILE_RISK_PRONE)
+    multiplier = 1.2;
+  if (profile.profile_label == PROFILE_RISK_AVERSE)
+    multiplier = 0.8;
+
+  double score = stack_risk * multiplier;
+  if (score > 1.0)
+    score = 1.0;
+
+  return score;
+}
+
+PlayerProfile
+RiskProfiler::get_player_profile(const std::string &player_id) const {
+  if (player_profiles.count(player_id)) {
+    return player_profiles.at(player_id);
+  }
+  return PlayerProfile();
 }
 
 void RiskProfiler::reset_hand() {
-    // Reset hand-specific tracking
-    for (auto& tracker_pair : stack_trackers) {
-        tracker_pair.second.total_committed_this_hand = 0.0;
-        tracker_pair.second.bet_history.clear();
-    }
+  for (auto &[id, profile] : player_profiles) {
+    profile.total_wagered = 0;
+    profile.current_bet_ratio = 0;
+    profile.hands_played++;
+  }
+}
+
+void RiskProfiler::update_profile_label(const std::string &player_id) {
+  PlayerProfile &profile = player_profiles[player_id];
+
+  double af = 0;
+  if (profile.total_calls > 0) {
+    af = (double)profile.total_bets / profile.total_calls;
+  } else if (profile.total_bets > 0) {
+    af = 10.0; // High aggression
+  }
+
+  if (af > 2.0)
+    profile.profile_label = PROFILE_RISK_PRONE;
+  else if (af < 1.0)
+    profile.profile_label = PROFILE_RISK_AVERSE;
+  else
+    profile.profile_label = PROFILE_RISK_NEUTRAL;
 }

@@ -20,7 +20,8 @@ GameState::GameState(RiskProfiler *rp, EquityModule *em)
     : risk_profiler(rp), equity_module(em) {
   pot_size = 0;
   current_street_highest_bet = 0;
-  stage = Stage::PREFLOP;
+  stage = Stage::START;
+  // stage = Stage::PREFLOP;
 }
 
 void GameState::init_deck() {
@@ -165,7 +166,9 @@ void GameState::next_street() {
   }
 
   // move to next stage
-  if (stage == Stage::PREFLOP)
+  if (stage == Stage::START)
+    stage = Stage::PREFLOP;
+  else if (stage == Stage::PREFLOP)
     stage = Stage::FLOP;
   else if (stage == Stage::FLOP)
     stage = Stage::TURN;

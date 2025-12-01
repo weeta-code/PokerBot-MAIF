@@ -14,6 +14,7 @@ using namespace std;
 enum class PlayMode { AUTONOMOUS, GUIDED };
 
 enum class Stage {
+  START,
   PREFLOP,
   FLOP,
   TURN,

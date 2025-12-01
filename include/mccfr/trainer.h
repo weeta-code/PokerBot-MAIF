@@ -18,7 +18,7 @@ class Trainer {
         uint64_t count;
         bool *update;
 
-        double cfr(GameState state, int player, std::vector<double> p);
+        double cfr(TrainState state, int player, std::vector<double> p);
 
     public:
         explicit Trainer(GameState *game);

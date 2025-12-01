@@ -20,7 +20,8 @@ GameState::GameState(RiskProfiler *rp, EquityModule *em)
     : risk_profiler(rp), equity_module(em) {
   pot_size = 0;
   current_street_highest_bet = 0;
-  stage = Stage::PREFLOP;
+  stage = Stage::START;
+  // stage = Stage::PREFLOP;
 }
 
 void GameState::init_deck() {
@@ -165,7 +166,9 @@ void GameState::next_street() {
   }
 
   // move to next stage
-  if (stage == Stage::PREFLOP)
+  if (stage == Stage::START)
+    stage = Stage::PREFLOP;
+  else if (stage == Stage::PREFLOP)
     stage = Stage::FLOP;
   else if (stage == Stage::FLOP)
     stage = Stage::TURN;
@@ -177,10 +180,13 @@ void GameState::next_street() {
   deal_community_cards();
 }
 
-bool GameState::record_action(int player_idx, string action, double amount) {
+bool GameState::record_action(int player_idx, Action action) {
+  // HELP: confused, are playerid and playeridx different?
   Player &p = players[player_idx];
 
-  if (action == "fold") {
+  history.push_back(action);
+
+  if (action.type == ActionType::FOLD) {
     p.is_folded = true;
     p.times_folded++;
     cout << p.id << " Fold \n";
@@ -188,7 +194,7 @@ bool GameState::record_action(int player_idx, string action, double amount) {
     return true;
   }
 
-  if (action == "call") {
+  if (action.type == ActionType::CALL) {
     double call_amount = current_street_highest_bet - p.current_bet;
     if (call_amount > p.stack)
       call_amount = p.stack; // all-in call
@@ -209,24 +215,24 @@ bool GameState::record_action(int player_idx, string action, double amount) {
     return true;
   }
 
-  if (action == "raise") {
+  if (action.type == ActionType::RAISE) {
     // amount here is total bet amount for the street
-    double actual_raise = amount - p.current_bet;
+    double actual_raise = action.amount - p.current_bet;
     // ALL IN
-    if (amount > p.stack + p.current_bet) {
-      amount = p.stack + p.current_bet;
+    if (action.amount > p.stack + p.current_bet) {
+      action.amount = p.stack + p.current_bet;
     }
 
     p.stack -= actual_raise;
-    p.current_bet = amount;
+    p.current_bet = action.amount;
     pot_size += actual_raise;
 
     if (p.stack == 0)
       p.is_all_in = true;
-    current_street_highest_bet = amount;
+    current_street_highest_bet = action.amount;
     p.times_raised++;
 
-    cout << p.id << " Raises to " << amount << ".\n";
+    cout << p.id << " Raises to " << action.amount << ".\n";
     risk_profiler->update_stack(p.id, actual_raise);
     risk_profiler->update_player_profile(p.id, "raise", actual_raise, pot_size);
     return true;
@@ -303,4 +309,8 @@ void GameState::resolve_winner() {
   cout << "TODO: find winner using equity_module to evaluate hands \n";
   cout << "TODO: update winner pot \n";
   cout << "TODO: print leaderboard of everyone's gain \n";
+}
+
+Action GameState::get_last_action() {
+  return history.back();
 }

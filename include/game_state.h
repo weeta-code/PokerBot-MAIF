@@ -14,11 +14,21 @@ using namespace std;
 enum class PlayMode { AUTONOMOUS, GUIDED };
 
 enum class Stage {
+  START,
   PREFLOP,
   FLOP,
   TURN,
   RIVER,
   SHOWDOWN,
+};
+
+enum class ActionType {
+    FOLD,
+    CHECK,
+    CALL,
+    BET,    
+    RAISE,   
+    ALLIN
 };
 
 // defining a comprehensive player profile
@@ -42,6 +52,15 @@ struct Player {
   Player(string _id, double _stack, bool _is_human);
 };
 
+struct Action {
+    Player player;
+    ActionType type;
+    int amount; 
+
+    Action(Player p, ActionType t, int amt = 0)
+        : player(p), type(t), amount(amt) {}
+};
+
 struct GameState {
   vector<Player> players;
   vector<Card> deck;
@@ -49,6 +68,7 @@ struct GameState {
 
   PlayMode play_mode;
   Stage stage;
+  std::vector<Action> history;
   int pot_size;
   int current_street_highest_bet;
 
@@ -78,12 +98,15 @@ struct GameState {
   // action func
   Card draw_card();
   // returns true if action is valid
-  bool record_action(int player_idx, string action, double amount);
+  bool record_action(int player_idx, Action action);
 
   // helper funcs
   int get_active_player_count();
   Player *get_current_player();
   void next_player();
+
+  // helper functions kat
+  Action get_last_action();
 };
 
 #endif

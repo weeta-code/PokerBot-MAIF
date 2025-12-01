@@ -29,9 +29,8 @@ class Trainer {
 
         const double *get_strategy(InfoSets info_set);
 
-        std::unordered_map<InfoSets, double*> get_overall_strategy();
+        std::unordered_map<InfoSets, const double*> get_overall_strategy();
 
 };
-
 
 #endif

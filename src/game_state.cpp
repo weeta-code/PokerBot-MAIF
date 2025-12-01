@@ -4,7 +4,7 @@
 #include <iostream>
 
 // player constructor
-Player::Player(string _id, double _stack, bool _is_human)
+Player::Player(int _id, double _stack, bool _is_human)
     : id(_id), stack(_stack), current_bet(0), is_folded(false),
       is_all_in(false), is_human(_is_human), times_folded(0), times_raised(0),
       times_called(0), hands_played(0) {
@@ -52,13 +52,6 @@ Card GameState::draw_card() {
 void GameState::init_game_setup() {
   cout << "Poker Engine Initialization \n";
 
-  // player picking mode
-  int mode;
-  cout << "Mode (0: Autonomous, 1: Guided): ";
-  cin >> mode;
-  play_mode = (mode == 0) ? PlayMode::AUTONOMOUS : PlayMode::GUIDED;
-
-  // get player numbers
   cout << "Enter Total Players (Including Yourself): ";
   cin >> num_players;
   if (num_players < 2) {
@@ -73,14 +66,13 @@ void GameState::init_game_setup() {
   players.clear();
 
   // init myself
-  players.emplace_back("MYSELF", start_stack, true);
-  risk_profiler->add_player("MYSELF", start_stack);
+  players.emplace_back(0, start_stack, true);
+  risk_profiler->add_player(0, start_stack);
 
   // init others as bots
   for (int i = 1; i < num_players; i++) {
-    string pid = "BOT_" + to_string(i);
-    players.emplace_back(pid, start_stack, false);
-    risk_profiler->add_player(pid, start_stack);
+    players.emplace_back(i, start_stack, false);
+    risk_profiler->add_player(i, start_stack);
   }
 
   dealer_index = 0;
@@ -311,6 +303,103 @@ void GameState::resolve_winner() {
   cout << "TODO: print leaderboard of everyone's gain \n";
 }
 
-Action GameState::get_last_action() {
-  return history.back();
+Action GameState::get_last_action() { return history.back(); }
+
+Player *GameState::get_player(int player_id) {
+  for (auto &p : players) {
+    if (p.id == player_id)
+      return &p;
+  }
+  return nullptr;
+}
+
+bool GameState::is_betting_round_over() {
+  int active = 0;
+  for (const auto &p : players) {
+    if (!p.is_folded && !p.is_all_in) {
+      active++;
+      if (p.current_bet != current_street_highest_bet)
+        return false;
+    }
+  }
+  return true;
+}
+
+bool GameState::is_terminal() {
+  if (stage == Stage::SHOWDOWN)
+    return true;
+  int active = 0;
+  for (const auto &p : players) {
+    if (!p.is_folded)
+      active++;
+  }
+  return active <= 1;
+}
+
+std::vector<Action> GameState::get_legal_actions() {
+  std::vector<Action> actions;
+  if (is_terminal())
+    return actions;
+
+  Player *p = get_current_player();
+  int call_amt = current_street_highest_bet - p->current_bet;
+
+  actions.emplace_back(p->id, ActionType::FOLD, 0);
+
+  if (call_amt == 0) {
+    actions.emplace_back(p->id, ActionType::CHECK, 0);
+
+    int third_pot = max(10, pot_size / 3);
+    int half_pot = max(10, pot_size / 2);
+    int pot = max(10, pot_size);
+
+    if (p->stack >= third_pot)
+      actions.emplace_back(p->id, ActionType::BET, third_pot);
+    if (p->stack >= half_pot && half_pot != third_pot)
+      actions.emplace_back(p->id, ActionType::BET, half_pot);
+    if (p->stack >= pot && pot != half_pot)
+      actions.emplace_back(p->id, ActionType::BET, pot);
+    if (p->stack > pot)
+      actions.emplace_back(p->id, ActionType::ALLIN, p->stack);
+  } else {
+    if (p->stack > call_amt) {
+      actions.emplace_back(p->id, ActionType::CALL, call_amt);
+
+      int third_pot = max(call_amt + 10, pot_size / 3);
+      int half_pot = max(call_amt + 10, pot_size / 2);
+      int pot = max(call_amt + 10, pot_size);
+
+      if (p->stack >= third_pot)
+        actions.emplace_back(p->id, ActionType::RAISE, third_pot);
+      if (p->stack >= half_pot && half_pot != third_pot)
+        actions.emplace_back(p->id, ActionType::RAISE, half_pot);
+      if (p->stack >= pot && pot != half_pot)
+        actions.emplace_back(p->id, ActionType::RAISE, pot);
+      if (p->stack > pot)
+        actions.emplace_back(p->id, ActionType::ALLIN, p->stack);
+    } else {
+      actions.emplace_back(p->id, ActionType::CALL, p->stack);
+    }
+  }
+  return actions;
+}
+
+void GameState::apply_action(Action action) {
+  record_action(current_player_index, action);
+  next_player();
+}
+
+string GameState::compute_information_set(int player_id) {
+  std::string info;
+  Player *p = get_player(player_id);
+  for (auto &c : p->hole_cards)
+    info += std::to_string((int)c.rank) + std::to_string((int)c.suit);
+  info += "|";
+  for (auto &c : community_cards)
+    info += std::to_string((int)c.rank) + std::to_string((int)c.suit);
+  info += "|";
+  for (auto &a : history)
+    info +=
+        std::to_string(a.player_id) + ":" + std::to_string((int)a.type) + ";";
+  return info;
 }

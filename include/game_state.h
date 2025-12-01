@@ -11,8 +11,6 @@
 
 using namespace std;
 
-enum class PlayMode { AUTONOMOUS, GUIDED };
-
 enum class Stage {
   START,
   PREFLOP,
@@ -22,18 +20,11 @@ enum class Stage {
   SHOWDOWN,
 };
 
-enum class ActionType {
-    FOLD,
-    CHECK,
-    CALL,
-    BET,    
-    RAISE,   
-    ALLIN
-};
+enum class ActionType { FOLD, CHECK, CALL, BET, RAISE, ALLIN };
 
 // defining a comprehensive player profile
 struct Player {
-  string id;
+  int id;
   vector<Card> hole_cards;
   int stack;
   int current_bet; // amount to bet in the current street
@@ -49,16 +40,16 @@ struct Player {
 
   PlayerProfile profile;
 
-  Player(string _id, double _stack, bool _is_human);
+  Player(int _id, double _stack, bool _is_human);
 };
 
 struct Action {
-    Player player;
-    ActionType type;
-    int amount; 
+  int player_id;
+  ActionType type;
+  int amount;
 
-    Action(Player p, ActionType t, int amt = 0)
-        : player(p), type(t), amount(amt) {}
+  Action(int pid, ActionType t, int amt = 0)
+      : player_id(pid), type(t), amount(amt) {}
 };
 
 struct GameState {
@@ -66,7 +57,6 @@ struct GameState {
   vector<Card> deck;
   vector<Card> community_cards;
 
-  PlayMode play_mode;
   Stage stage;
   std::vector<Action> history;
   int pot_size;
@@ -99,6 +89,13 @@ struct GameState {
   Card draw_card();
   // returns true if action is valid
   bool record_action(int player_idx, Action action);
+
+  // MCCFR methods
+  std::vector<Action> get_legal_actions();
+  void apply_action(Action action);
+  bool is_terminal();
+  string compute_information_set(int player_id);
+  Player *get_player(int player_id);
 
   // helper funcs
   int get_active_player_count();

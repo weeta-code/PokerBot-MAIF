@@ -1,121 +1,108 @@
-#include "trainer.h"
-#include "node.h"
-#include "train_state.h"
+#include "../../include/mccfr/trainer.h"
+#include <iostream>
+#include <random>
 
-Trainer::Trainer(GameState *game) {
-    game = game;
-    train_state = TrainState(game);
-    fixed_strategies = new std::unordered_map<InfoSets, Node *>[game->num_players];
-}
+Trainer::Trainer(GameState *g) : game(g) {}
 
 Trainer::~Trainer() {
-    for (auto &itr : node_map) {
-        delete itr.second;
-    }
-    for (int i = 0; i < game.num_players; ++i) {
-        if (update[i]) {
-            continue;
-        }
-        for (auto &itr : fixed_strategies[i]) {
-            delete itr.second;
-        }
-    }
-    delete[] fixed_strategies;
-    delete[] update;
-    delete &game;
+  for (auto &itr : node_map) {
+    delete itr.second;
+  }
 }
 
 void Trainer::train(int iterations) {
-    std::vector<double> utils(train_state.get_legal_actions().size(), 0.0);
-
-    for (int i = 0; i < iterations; ++i) {
-        for (int p = 0; p < game.num_players; ++p) {
-            if (update[p]) {
-                continue;
-            }
-           
-            utils[p] = cfr(train_state, p, std::vector<double>(game.num_players, 1));
-            for (auto & itr : node_map) {
-                itr.second->update_regret_sum();
-            }
-        }
+  for (int i = 0; i < iterations; ++i) {
+    game->start_hand();
+    for (int p = 0; p < game->num_players; ++p) {
+      GameState sim_state = *game;
+      cfr(sim_state, p, 1.0);
     }
+  }
 }
 
-const double *Trainer::get_strategy(InfoSets info_set) {
-    auto it = node_map.find(info_set);
-    if (it != node_map.end()) {
-        return it->second->get_average_strategy();
+double Trainer::cfr(GameState &state, int player_id, double history_prob) {
+  if (state.is_terminal()) {
+    return 0.0;
+  }
+
+  if (state.is_betting_round_over()) {
+    state.next_street();
+    if (state.is_terminal())
+      return cfr(state, player_id, history_prob);
+  }
+
+  Player *curr_player = state.get_current_player();
+  if (!curr_player)
+    return 0.0;
+
+  std::string info_set = state.compute_information_set(curr_player->id);
+  std::vector<Action> legal_actions = state.get_legal_actions();
+
+  if (legal_actions.empty())
+    return 0.0;
+
+  if (node_map.find(info_set) == node_map.end()) {
+    node_map[info_set] = new Node(legal_actions.size());
+  }
+  Node *node = node_map[info_set];
+
+  std::vector<double> strategy =
+      node->get_strategy(curr_player->id == player_id ? history_prob : 1.0);
+
+  double util = 0.0;
+  std::vector<double> action_utils(legal_actions.size());
+
+  if (curr_player->id == player_id) {
+    for (size_t i = 0; i < legal_actions.size(); ++i) {
+      GameState next_state = state;
+      next_state.apply_action(legal_actions[i]);
+      action_utils[i] = cfr(next_state, player_id, history_prob * strategy[i]);
+      util += strategy[i] * action_utils[i];
     }
-    return {};
+
+    for (size_t i = 0; i < legal_actions.size(); ++i) {
+      double regret = action_utils[i] - util;
+      node->update_regret_sum(i, regret);
+    }
+  } else {
+    for (size_t i = 0; i < legal_actions.size(); ++i) {
+      GameState next_state = state;
+      next_state.apply_action(legal_actions[i]);
+      util +=
+          strategy[i] * cfr(next_state, player_id, history_prob * strategy[i]);
+    }
+  }
+
+  return util;
 }
 
-std::unordered_map<InfoSets, const double*>  Trainer::get_overall_strategy() {
-    std::unordered_map<InfoSets, const double*> strategies;
-    
-    for (const auto& [info_set, node] : node_map) {
-        strategies[info_set] = node->get_average_strategy();
-    }
-    
-    return strategies;
+std::vector<double> Trainer::get_strategy(const std::string &info_set) {
+  if (node_map.find(info_set) != node_map.end()) {
+    return node_map[info_set]->get_average_strategy();
+  }
+  return {};
 }
 
-double Trainer::cfr(TrainState state, int player, std::vector<double> p) {
-    if (state.is_terminal()) {
-        auto utils = state.get_returns(); // get payoff at state
-        return utils[player];
-    }
-    
-    if (state.is_chance()) {
-        game.next_street(); 
-        return cfr(state.clone(), player, p);
-    }
-    
-    int curr_player = (int) game.get_current_player().id;
-    InfoSets info_set = get_info_set(curr_player); // get info set
-    
-    auto legal_actions = state.get_legal_actions();
-    if (legal_actions.empty()) {
-        return;
-    }
-    
-    if (node_map.find(info_set) == node_map.end()) {
-        node_map.emplace(info_set, Node(legal_actions.size()));
-    }
-    
-    Node *node = node_map[info_set];
-    
-    if (curr_player == player) {
-        auto strategy = node->get_strategy(p[player]);
-        std::vector<double> utils(legal_actions.size(), 0.0);
-        double node_util = 0.0;
-        
-        for (std::size_t i = 0; i < legal_actions.size(); ++i) {
-            auto nextState = state.get_next_state(); //working on logic
-            nextState->apply_action(legal_actions[i]);
-            
-            std::vector<double> next_p = p;
-            next_p[player] *= strategy[i];
-            
-            utils[i] = cfr(state.clone(), player, next_p);
-            node_util += strategy[i] * utils[i];
-        }
-        
-        for (std::size_t i = 0; i < legal_actions.size(); ++i) {
-            double regret = utils[i] - node_util;
-            node->update_regret_sum(i, regret);
-        }
-        
-        return node_util;
-        
-    } else {
-        auto strategy = node->get_strategy(p[curr_player]);
-        int action = sample_action(strategy); // sampler?
-        
-        std::vector<double> next_p = p;
-        next_p[curr_player] *= strategy[action];
-        
-        state.apply_action(legal_actions[action]);
-        return cfr(state.clone(), player, next_p);
-    }
+Action Trainer::get_action_recommendation(GameState &state, int player_id,
+                                          std::vector<double> &probabilities) {
+  std::string info_set = state.compute_information_set(player_id);
+  std::vector<Action> legal_actions = state.get_legal_actions();
+
+  if (legal_actions.empty()) {
+    probabilities.clear();
+    return Action(-1, ActionType::FOLD, 0);
+  }
+
+  probabilities = get_strategy(info_set);
+
+  if (probabilities.empty()) {
+    probabilities.resize(legal_actions.size(), 1.0 / legal_actions.size());
+  }
+
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::discrete_distribution<> dist(probabilities.begin(), probabilities.end());
+  int selected = dist(gen);
+
+  return legal_actions[selected];
 }

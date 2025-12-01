@@ -6,8 +6,7 @@ RiskProfiler::RiskProfiler(double /*risk_tolerance*/) {
   // Constructor
 }
 
-void RiskProfiler::add_player(const std::string &player_id,
-                              double initial_stack) {
+void RiskProfiler::add_player(int player_id, double initial_stack) {
   PlayerProfile profile;
   profile.hands_observed = 0;
   profile.hands_played = 0;
@@ -25,7 +24,7 @@ void RiskProfiler::add_player(const std::string &player_id,
   player_profiles[player_id] = profile;
 }
 
-void RiskProfiler::update_player_profile(const std::string &player_id,
+void RiskProfiler::update_player_profile(int player_id,
                                          const std::string &action,
                                          double bet_amount,
                                          double /*pot_size*/) {
@@ -54,17 +53,15 @@ void RiskProfiler::update_player_profile(const std::string &player_id,
   update_profile_label(player_id);
 }
 
-void RiskProfiler::update_stack(const std::string &player_id, double amount) {
+void RiskProfiler::update_stack(int player_id, double amount) {
   if (player_profiles.find(player_id) != player_profiles.end()) {
     player_profiles[player_id].stack_size = amount;
   }
 }
 
-double
-RiskProfiler::calculate_risk_score(const std::string &player_id,
-                                   const std::string & /*action*/,
-                                   double bet_amount, double /*pot_size*/,
-                                   double /*adjusted_win_probability*/) const {
+double RiskProfiler::calculate_risk_score(
+    int player_id, const std::string & /*action*/, double bet_amount,
+    double /*pot_size*/, double /*adjusted_win_probability*/) const {
 
   if (player_profiles.find(player_id) == player_profiles.end())
     return 0.5;
@@ -92,8 +89,7 @@ RiskProfiler::calculate_risk_score(const std::string &player_id,
   return score;
 }
 
-PlayerProfile
-RiskProfiler::get_player_profile(const std::string &player_id) const {
+PlayerProfile RiskProfiler::get_player_profile(int player_id) const {
   if (player_profiles.count(player_id)) {
     return player_profiles.at(player_id);
   }
@@ -108,7 +104,7 @@ void RiskProfiler::reset_hand() {
   }
 }
 
-void RiskProfiler::update_profile_label(const std::string &player_id) {
+void RiskProfiler::update_profile_label(int player_id) {
   PlayerProfile &profile = player_profiles[player_id];
 
   double af = 0;

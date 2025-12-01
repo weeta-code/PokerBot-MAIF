@@ -34,27 +34,25 @@ struct PlayerProfile {
 
 class RiskProfiler {
 private:
-  std::map<std::string, PlayerProfile> player_profiles;
+  std::map<int, PlayerProfile> player_profiles;
 
-  void update_profile_label(const std::string &player_id);
+  void update_profile_label(int player_id);
 
 public:
   RiskProfiler(double risk_tolerance = 0.5);
 
-  void add_player(const std::string &player_id, double initial_stack);
+  void add_player(int player_id, double initial_stack);
 
-  void update_player_profile(const std::string &player_id,
-                             const std::string &action, double bet_amount,
-                             double pot_size);
+  void update_player_profile(int player_id, const std::string &action,
+                             double bet_amount, double pot_size);
 
-  void update_stack(const std::string &player_id, double amount);
+  void update_stack(int player_id, double amount);
 
-  double calculate_risk_score(const std::string &player_id,
-                              const std::string &action, double bet_amount,
-                              double pot_size,
+  double calculate_risk_score(int player_id, const std::string &action,
+                              double bet_amount, double pot_size,
                               double adjusted_win_probability) const;
 
-  PlayerProfile get_player_profile(const std::string &player_id) const;
+  PlayerProfile get_player_profile(int player_id) const;
 
   void reset_hand();
 };

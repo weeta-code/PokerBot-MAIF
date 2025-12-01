@@ -1,26 +1,24 @@
 #ifndef NODE_H
 #define NODE_H
 
+#include <vector>
+
 class Node {
-    private:
-        int num_actions;
-        double *regret_sum;
-        double *strategy;
-        double *strategy_sum;
-        double *average_strategy;
+private:
+  int num_actions;
+  std::vector<double> regret_sum;
+  std::vector<double> strategy;
+  std::vector<double> strategy_sum;
 
-    public:
-        explicit Node(int n);
+public:
+  explicit Node(int n);
 
-        ~Node() {};
+  ~Node() = default;
 
-        const double *get_strategy(double realization_weight);
+  std::vector<double> get_strategy(double realization_weight);
+  std::vector<double> get_average_strategy();
 
-        const double* get_average_strategy();
-
-        void update_regret_sum(int action, double regret);
-
+  void update_regret_sum(int action, double regret);
 };
-
 
 #endif

@@ -1,36 +1,31 @@
 #ifndef TRAINER_H
 #define TRAINER_H
 
-#include <vector>
-#include <unordered_map>
 #include "game_state.h"
 #include "node.h"
-#include "train_state.h"
+#include <unordered_map>
+#include <vector>
 
-using InfoSets = typename std::unordered_map<std::string, std::vector<std::tuple<std::string, double>>>;
+using InfoSetKey = std::string;
 
 class Trainer {
-    private:
-        GameState game;
-        TrainState train_state;
-        std::unordered_map<InfoSets, Node *> node_map;
-        std::unordered_map<InfoSets, Node *> *fixed_strategies;
-        uint64_t count;
-        bool *update;
+private:
+  GameState *game;
+  std::unordered_map<InfoSetKey, Node *> node_map;
 
-        double cfr(TrainState state, int player, std::vector<double> p);
+  double cfr(GameState &state, int player_id, double history_prob);
 
-    public:
-        explicit Trainer(GameState *game);
+public:
+  explicit Trainer(GameState *game);
 
-        ~Trainer();
+  ~Trainer();
 
-        void train(int iterations);
+  void train(int iterations);
 
-        const double *get_strategy(InfoSets info_set);
+  std::vector<double> get_strategy(const std::string &info_set);
 
-        std::unordered_map<InfoSets, const double*> get_overall_strategy();
-
+  Action get_action_recommendation(GameState &state, int player_id,
+                                   std::vector<double> &probabilities);
 };
 
 #endif

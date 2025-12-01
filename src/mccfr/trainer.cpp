@@ -2,6 +2,7 @@
 #include <iostream>
 #include <random>
 #include <fstream>
+#include <ctime>
 
 Trainer::Trainer(GameState *g) : game(g) {}
 
@@ -22,6 +23,13 @@ void Trainer::train(int iterations) {
       GameState sim_state = *game;
       cfr(sim_state, p, 1.0);
     }
+
+    std::time_t curr_time = std::time(nullptr);
+
+    char* time_file_name = std::ctime(&curr_time);
+    
+    save_to_file(time_file_name);
+
   }
   std::cout << "Training complete: " << iterations << " iterations\n";
 }

@@ -31,14 +31,6 @@ enum class ActionType {
     ALLIN
 };
 
-struct Action {
-    ActionType type;
-    int amount; 
-
-    Action(ActionType t, int amt = 0)
-        : type(t), amount(amt) {}
-};
-
 // defining a comprehensive player profile
 struct Player {
   string id;
@@ -60,6 +52,15 @@ struct Player {
   Player(string _id, double _stack, bool _is_human);
 };
 
+struct Action {
+    Player player;
+    ActionType type;
+    int amount; 
+
+    Action(ActionType t, int amt = 0)
+        : type(t), amount(amt) {}
+};
+
 struct GameState {
   vector<Player> players;
   vector<Card> deck;
@@ -67,7 +68,7 @@ struct GameState {
 
   PlayMode play_mode;
   Stage stage;
-  std::vector<std::tuple<Player, Action>> history;
+  std::vector<Action> history;
   int pot_size;
   int current_street_highest_bet;
 
@@ -103,6 +104,9 @@ struct GameState {
   int get_active_player_count();
   Player *get_current_player();
   void next_player();
+
+  // helper functions kat
+  Action get_last_action();
 };
 
 #endif

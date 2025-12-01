@@ -181,9 +181,10 @@ void GameState::next_street() {
 }
 
 bool GameState::record_action(int player_idx, Action action) {
+  // HELP: confused, are playerid and playeridx different?
   Player &p = players[player_idx];
 
-  history.push_back(std::tuple(p, action));
+  history.push_back(action);
 
   if (action.type == ActionType::FOLD) {
     p.is_folded = true;
@@ -308,4 +309,8 @@ void GameState::resolve_winner() {
   cout << "TODO: find winner using equity_module to evaluate hands \n";
   cout << "TODO: update winner pot \n";
   cout << "TODO: print leaderboard of everyone's gain \n";
+}
+
+Action GameState::get_last_action() {
+  return history.back();
 }

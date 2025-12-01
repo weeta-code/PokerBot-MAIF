@@ -8,29 +8,12 @@
 // this needs to be reconciled with game state
 // but i don't even know where to start,,,
 
-enum class ActionType {
-    FOLD,
-    CHECK,
-    CALL,
-    BET,    
-    RAISE,   
-    ALLIN
-};
-
-struct Action {
-    ActionType type;
-    int amount; 
-
-    Action(ActionType t, int amt = 0)
-        : type(t), amount(amt) {}
-};
-
 class TrainState {
     private:
         GameState game;
         bool game_over;
         int next_player;
-        double pot; // is this def in gamestate?
+        double pot; 
         int num_players;
 
         std::vector<double> initial_stacks;

@@ -8,6 +8,7 @@ TrainState::TrainState(GameState *game) {
     game_over = false;
     next_player = 0;
     num_players = game->players.size();
+    pot = game->pot_size;
     std::vector<bool> folded(num_players, false);
     
     for (int i = 0; i < num_players; ++i) {
@@ -48,8 +49,7 @@ bool TrainState::is_terminal() {
 }
 
 bool TrainState::is_chance() {
-    // not decision not or end game
-    return !game.stage && !game_over;
+    return game.stage != Stage::START && !game_over;
 }
 
 std::vector<Action> TrainState::get_legal_action() {
@@ -61,8 +61,9 @@ std::vector<Action> TrainState::get_legal_action() {
         return {};
     }
 
-    // check last action
-    Action call = history_get_last_action();
+    Player* player = game.get_current_player();
+
+    Action call = game.get_last_action();
 
     int tab = game.current_street_highest_bet;
 

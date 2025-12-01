@@ -65,8 +65,6 @@ std::vector<Action> TrainState::get_legal_actions() {
         return {};
     }
 
-    
-
     Action call = game.get_last_action();
 
     int tab = game.current_street_highest_bet;
@@ -82,8 +80,8 @@ std::vector<Action> TrainState::get_legal_actions() {
         actions.emplace_back(ActionType::ALLIN, tab);
     } else {
         actions.emplace_back(ActionType::FOLD, 0);
-        int call_amt = std::min(tab, call.amount);
-        actions.emplace_back(ActionType::CALL, call_amt);
+        call_amount = std::min(tab, call.amount);
+        actions.emplace_back(ActionType::CALL, call_amount);
 
         for (int s : raise_buckets) {
             if (s > call.amount && s <= tab) actions.emplace_back(ActionType::RAISE, s);

@@ -1,5 +1,6 @@
 #include "trainer.h"
 #include "node.h"
+#include "train_state.h"
 
 Trainer::Trainer(GameState *game) {
     game = game;
@@ -58,7 +59,7 @@ std::unordered_map<InfoSets, const double*>  Trainer::get_overall_strategy() {
     return strategies;
 }
 
-double Trainer::cfr(GameState state, int player, std::vector<double> p) {
+double Trainer::cfr(TrainState state, int player, std::vector<double> p) {
     if (state.is_terminal()) {
         auto utils = state.get_returns(); // get payoff at state
         return utils[player];
@@ -66,10 +67,10 @@ double Trainer::cfr(GameState state, int player, std::vector<double> p) {
     
     if (state.is_chance()) {
         state.next_street(); // deal next street
-        return cfr(clone(state), player, p);
+        return cfr(state.clone(), player, p);
     }
     
-    int curr_player = state.get_current_player();
+    int curr_player = state.game();
     InfoSets info_set = state.get_info_set(curr_player);
     
     auto legal_actions = state->get_legal_action();

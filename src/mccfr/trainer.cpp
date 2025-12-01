@@ -1,6 +1,7 @@
 #include "../../include/mccfr/trainer.h"
 #include <iostream>
 #include <random>
+#include <fstream>
 
 Trainer::Trainer(GameState *g) : game(g) {}
 
@@ -12,17 +13,25 @@ Trainer::~Trainer() {
 
 void Trainer::train(int iterations) {
   for (int i = 0; i < iterations; ++i) {
+    if (i % 100 == 0 && i > 0) {
+      std::cout << "Iteration " << i << "/" << iterations << " ("
+                << (100.0 * i / iterations) << "%)\n";
+    }
     game->start_hand();
     for (int p = 0; p < game->num_players; ++p) {
       GameState sim_state = *game;
       cfr(sim_state, p, 1.0);
     }
   }
+  std::cout << "Training complete: " << iterations << " iterations\n";
 }
 
 double Trainer::cfr(GameState &state, int player_id, double history_prob) {
   if (state.is_terminal()) {
-    return 0.0;
+    Player *p = state.get_player(player_id);
+    if (!p)
+      return 0.0;
+    return p->stack - 1000.0;
   }
 
   if (state.is_betting_round_over()) {
@@ -49,14 +58,17 @@ double Trainer::cfr(GameState &state, int player_id, double history_prob) {
   std::vector<double> strategy =
       node->get_strategy(curr_player->id == player_id ? history_prob : 1.0);
 
-  double util = 0.0;
-  std::vector<double> action_utils(legal_actions.size());
-
   if (curr_player->id == player_id) {
+    std::vector<double> action_utils(legal_actions.size(), 0.0);
+
     for (size_t i = 0; i < legal_actions.size(); ++i) {
       GameState next_state = state;
       next_state.apply_action(legal_actions[i]);
       action_utils[i] = cfr(next_state, player_id, history_prob * strategy[i]);
+    }
+
+    double util = 0.0;
+    for (size_t i = 0; i < legal_actions.size(); ++i) {
       util += strategy[i] * action_utils[i];
     }
 
@@ -64,16 +76,18 @@ double Trainer::cfr(GameState &state, int player_id, double history_prob) {
       double regret = action_utils[i] - util;
       node->update_regret_sum(i, regret);
     }
-  } else {
-    for (size_t i = 0; i < legal_actions.size(); ++i) {
-      GameState next_state = state;
-      next_state.apply_action(legal_actions[i]);
-      util +=
-          strategy[i] * cfr(next_state, player_id, history_prob * strategy[i]);
-    }
-  }
 
-  return util;
+    return util;
+  } else {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::discrete_distribution<> dist(strategy.begin(), strategy.end());
+    int sampled = dist(gen);
+
+    GameState next_state = state;
+    next_state.apply_action(legal_actions[sampled]);
+    return cfr(next_state, player_id, history_prob * strategy[sampled]);
+  }
 }
 
 std::vector<double> Trainer::get_strategy(const std::string &info_set) {
@@ -105,4 +119,67 @@ Action Trainer::get_action_recommendation(GameState &state, int player_id,
   int selected = dist(gen);
 
   return legal_actions[selected];
+}
+
+void Trainer::save_to_file(const std::string &filename) {
+  std::ofstream out(filename, std::ios::binary);
+  if (!out) {
+    std::cerr << "Failed to open file for writing: " << filename << "\n";
+    return;
+  }
+
+  size_t map_size = node_map.size();
+  out.write(reinterpret_cast<const char *>(&map_size), sizeof(map_size));
+
+  for (const auto &[key, node] : node_map) {
+    size_t key_len = key.size();
+    out.write(reinterpret_cast<const char *>(&key_len), sizeof(key_len));
+    out.write(key.c_str(), key_len);
+
+    std::vector<double> avg_strat = node->get_average_strategy();
+    size_t num_actions = avg_strat.size();
+    out.write(reinterpret_cast<const char *>(&num_actions), sizeof(num_actions));
+    out.write(reinterpret_cast<const char *>(avg_strat.data()),
+              num_actions * sizeof(double));
+  }
+
+  out.close();
+  std::cout << "Saved " << map_size << " nodes to " << filename << "\n";
+}
+
+void Trainer::load_from_file(const std::string &filename) {
+  std::ifstream in(filename, std::ios::binary);
+  if (!in) {
+    std::cerr << "Failed to open file for reading: " << filename << "\n";
+    return;
+  }
+
+  for (auto &[key, node] : node_map) {
+    delete node;
+  }
+  node_map.clear();
+
+  size_t map_size;
+  in.read(reinterpret_cast<char *>(&map_size), sizeof(map_size));
+
+  for (size_t i = 0; i < map_size; ++i) {
+    size_t key_len;
+    in.read(reinterpret_cast<char *>(&key_len), sizeof(key_len));
+
+    std::string key(key_len, '\0');
+    in.read(&key[0], key_len);
+
+    size_t num_actions;
+    in.read(reinterpret_cast<char *>(&num_actions), sizeof(num_actions));
+
+    std::vector<double> avg_strat(num_actions);
+    in.read(reinterpret_cast<char *>(avg_strat.data()),
+            num_actions * sizeof(double));
+
+    Node *node = new Node(num_actions);
+    node_map[key] = node;
+  }
+
+  in.close();
+  std::cout << "Loaded " << map_size << " nodes from " << filename << "\n";
 }

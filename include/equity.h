@@ -74,9 +74,10 @@ public:
   void enable_cache();
   void clear_cache();
 
-private:
   int bucketize_hand(const std::vector<Card> &hero_hand,
                      const std::vector<Card> &board_cards, street street);
+
+private:
 
   double compute_equity_vs_range(
       int hero_bucket, const std::vector<double> &villain_bucket_distribution);

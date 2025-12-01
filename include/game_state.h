@@ -66,6 +66,11 @@ struct GameState {
   int dealer_index;
   int current_player_index;
 
+  int small_blind_pos;
+  int big_blind_pos;
+  int small_blind_amount;
+  int big_blind_amount;
+
   // incapsulate other modules to external engines
   RiskProfiler *risk_profiler;
   EquityModule *equity_module;

@@ -106,9 +106,46 @@ int EquityModule::evaluate_7_cards(const std::vector<Card> &cards) {
 
 int EquityModule::bucketize_hand(const std::vector<Card> &hero_hand,
                                  const std::vector<Card> &board_cards,
-                                 street /*street*/) {
-  if (hero_hand.empty())
+                                 street st) {
+  if (hero_hand.empty() || hero_hand.size() < 2)
     return BucketID::AIR;
+
+  if (st == PRE && board_cards.empty()) {
+    Rank r1 = hero_hand[0].rank;
+    Rank r2 = hero_hand[1].rank;
+    Rank high = r1 > r2 ? r1 : r2;
+    Rank low = r1 > r2 ? r2 : r1;
+    bool suited = hero_hand[0].suit == hero_hand[1].suit;
+    bool pair = r1 == r2;
+
+    if (pair) {
+      if (high >= Rank::QUEEN)
+        return BucketID::NUTS;
+      if (high >= Rank::NINE)
+        return BucketID::OVER_PAIR;
+      if (high >= Rank::SIX)
+        return BucketID::TOP_PAIR;
+      return BucketID::MIDDLE_PAIR;
+    }
+
+    if (high >= Rank::ACE && low >= Rank::TEN) {
+      return suited ? BucketID::STRONG_MADE : BucketID::TOP_PAIR;
+    }
+
+    if (high >= Rank::KING && low >= Rank::TEN) {
+      return suited ? BucketID::TOP_PAIR : BucketID::MIDDLE_PAIR;
+    }
+
+    if (high >= Rank::JACK && low >= Rank::NINE) {
+      return suited ? BucketID::MIDDLE_PAIR : BucketID::WEAK_PAIR;
+    }
+
+    if (high >= Rank::TEN || suited) {
+      return BucketID::WEAK_PAIR;
+    }
+
+    return BucketID::AIR;
+  }
 
   std::vector<Card> all_cards = hero_hand;
   all_cards.insert(all_cards.end(), board_cards.begin(), board_cards.end());
@@ -144,6 +181,20 @@ int EquityModule::bucketize_hand(const std::vector<Card> &hero_hand,
     }
     return BucketID::MIDDLE_PAIR;
   }
+
+  bool flush_draw = false;
+  if (board_cards.size() >= 2) {
+    std::map<Suit, int> suit_counts;
+    for (const auto &c : all_cards)
+      suit_counts[c.suit]++;
+    for (const auto &[suit, count] : suit_counts) {
+      if (count >= 4)
+        flush_draw = true;
+    }
+  }
+
+  if (flush_draw)
+    return BucketID::STRONG_DRAW;
 
   return BucketID::AIR;
 }

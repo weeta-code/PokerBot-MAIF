@@ -26,6 +26,9 @@ public:
 
   Action get_action_recommendation(GameState &state, int player_id,
                                    std::vector<double> &probabilities);
+
+  void save_to_file(const std::string &filename);
+  void load_from_file(const std::string &filename);
 };
 
 #endif

@@ -22,6 +22,23 @@ enum class Stage {
   SHOWDOWN,
 };
 
+enum class ActionType {
+    FOLD,
+    CHECK,
+    CALL,
+    BET,    
+    RAISE,   
+    ALLIN
+};
+
+struct Action {
+    ActionType type;
+    int amount; 
+
+    Action(ActionType t, int amt = 0)
+        : type(t), amount(amt) {}
+};
+
 // defining a comprehensive player profile
 struct Player {
   string id;
@@ -50,6 +67,7 @@ struct GameState {
 
   PlayMode play_mode;
   Stage stage;
+  std::vector<std::tuple<Player, Action>> history;
   int pot_size;
   int current_street_highest_bet;
 
@@ -79,7 +97,7 @@ struct GameState {
   // action func
   Card draw_card();
   // returns true if action is valid
-  bool record_action(int player_idx, string action, double amount);
+  bool record_action(int player_idx, Action action);
 
   // helper funcs
   int get_active_player_count();

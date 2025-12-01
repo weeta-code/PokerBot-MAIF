@@ -57,8 +57,8 @@ struct Action {
     ActionType type;
     int amount; 
 
-    Action(ActionType t, int amt = 0)
-        : type(t), amount(amt) {}
+    Action(Player p, ActionType t, int amt = 0)
+        : player(p), type(t), amount(amt) {}
 };
 
 struct GameState {

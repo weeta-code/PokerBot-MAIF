@@ -15,10 +15,13 @@ class TrainState {
         int next_player;
         double pot; 
         int num_players;
+        int call_amount;
 
         std::vector<double> initial_stacks;
         std::vector<double> player_stacks;
+
         std::vector<bool> folded;
+        std::vector<bool> all_in;
 
     public:
         explicit TrainState(GameState *game);
@@ -31,9 +34,13 @@ class TrainState {
 
         bool is_chance();
 
-        std::vector<Action> get_legal_action();
+        std::vector<Action> get_legal_actions();
 
         void apply_action(Action action);
+
+        bool get_game_over();
+        
+        int get_num_active_players();
 
         TrainState clone() const { return *this; }
 };

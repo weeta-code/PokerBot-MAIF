@@ -4,6 +4,7 @@
 
 Trainer::Trainer(GameState *game) {
     game = game;
+    train_state = TrainState(game);
     fixed_strategies = new std::unordered_map<InfoSets, Node *>[game->num_players];
 }
 
@@ -25,7 +26,7 @@ Trainer::~Trainer() {
 }
 
 void Trainer::train(int iterations) {
-    std::vector<double> utils(game.get_legal_action().size(), 0.0);
+    std::vector<double> utils(train_state.get_legal_actions().size(), 0.0);
 
     for (int i = 0; i < iterations; ++i) {
         for (int p = 0; p < game.num_players; ++p) {
@@ -33,7 +34,7 @@ void Trainer::train(int iterations) {
                 continue;
             }
            
-            utils[p] = cfr(game, p, std::vector<double>(game.num_players, 1));
+            utils[p] = cfr(train_state, p, std::vector<double>(game.num_players, 1));
             for (auto & itr : node_map) {
                 itr.second->update_regret_sum();
             }
@@ -66,14 +67,14 @@ double Trainer::cfr(TrainState state, int player, std::vector<double> p) {
     }
     
     if (state.is_chance()) {
-        state.next_street(); // deal next street
+        game.next_street(); 
         return cfr(state.clone(), player, p);
     }
     
-    int curr_player = state.game();
-    InfoSets info_set = state.get_info_set(curr_player);
+    int curr_player = (int) game.get_current_player().id;
+    InfoSets info_set = get_info_set(curr_player); // get info set
     
-    auto legal_actions = state->get_legal_action();
+    auto legal_actions = state.get_legal_actions();
     if (legal_actions.empty()) {
         return;
     }
@@ -90,13 +91,13 @@ double Trainer::cfr(TrainState state, int player, std::vector<double> p) {
         double node_util = 0.0;
         
         for (std::size_t i = 0; i < legal_actions.size(); ++i) {
-            auto nextState = get_next_state(); //working on logic
+            auto nextState = state.get_next_state(); //working on logic
             nextState->apply_action(legal_actions[i]);
             
             std::vector<double> next_p = p;
             next_p[player] *= strategy[i];
             
-            utils[i] = cfr(clone(nextState), player, next_p);
+            utils[i] = cfr(state.clone(), player, next_p);
             node_util += strategy[i] * utils[i];
         }
         
@@ -114,7 +115,7 @@ double Trainer::cfr(TrainState state, int player, std::vector<double> p) {
         std::vector<double> next_p = p;
         next_p[curr_player] *= strategy[action];
         
-        state->apply_action(legal_actions[action]);
-        return cfr(clone(state), player, next_p);
+        state.apply_action(legal_actions[action]);
+        return cfr(state.clone(), player, next_p);
     }
 }

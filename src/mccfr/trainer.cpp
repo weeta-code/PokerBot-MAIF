@@ -23,14 +23,13 @@ void Trainer::train(int iterations) {
       GameState sim_state = *game;
       cfr(sim_state, p, 1.0);
     }
-
-    std::time_t curr_time = std::time(nullptr);
-
-    char* time_file_name = std::ctime(&curr_time);
-    
-    save_to_file(time_file_name);
-
   }
+  std::time_t curr_time = std::time(nullptr);
+
+  char* time_file_name = std::ctime(&curr_time);
+
+  save_to_file(time_file_name);
+
   std::cout << "Training complete: " << iterations << " iterations\n";
 }
 
@@ -52,7 +51,7 @@ double Trainer::cfr(GameState &state, int player_id, double history_prob) {
   if (!curr_player)
     return 0.0;
 
-  std::string info_set = state.compute_information_set(curr_player->id);
+  std::string info_set = state.compute_information_set(curr_player->id);  
   std::vector<Action> legal_actions = state.get_legal_actions();
 
   if (legal_actions.empty())
@@ -61,6 +60,7 @@ double Trainer::cfr(GameState &state, int player_id, double history_prob) {
   if (node_map.find(info_set) == node_map.end()) {
     node_map[info_set] = new Node(legal_actions.size());
   }
+  
   Node *node = node_map[info_set];
 
   std::vector<double> strategy =

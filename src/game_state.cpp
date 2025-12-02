@@ -21,7 +21,12 @@ GameState::GameState(RiskProfiler *rp, EquityModule *em)
   pot_size = 0;
   current_street_highest_bet = 0;
   stage = Stage::START;
-  // stage = Stage::PREFLOP;
+  num_players = 5;
+  current_player_index = 0;
+
+  for (int i = 0; i < num_players; ++i) {
+    players.push_back(Player(i, 100.0, false));
+  }
 }
 
 void GameState::init_deck() {
@@ -152,8 +157,16 @@ void GameState::next_street() {
 
   // move player to the left of dealer
   current_player_index = (dealer_index + 1) % num_players;
-  while (players[current_player_index].is_folded ||
-         players[current_player_index].is_all_in) {
+
+  bool all_folded = true;
+  bool all_in = true;
+
+  for (int i = 0; i < num_players; ++i) {
+    all_folded &= players[i].is_folded;
+    all_in &= players[i].is_all_in;
+    if (!all_folded || !all_in) {
+      break;
+    }
     current_player_index = (current_player_index + 1) % num_players;
   }
 
@@ -358,9 +371,10 @@ Player *GameState::get_player(int player_id) {
 bool GameState::is_betting_round_over() {
   for (const auto &p : players) {
     if (!p.is_folded && !p.is_all_in) {
-      if (p.current_bet != current_street_highest_bet)
+      // if (p.current_bet != current_street_highest_bet)
         return false;
-    }
+    } else if (p.current_bet != current_street_highest_bet)
+        return false;
   }
   return true;
 }
@@ -434,6 +448,7 @@ string GameState::compute_information_set(int player_id) {
   Player *p = get_player(player_id);
 
   street st = PRE;
+  
   if (stage == Stage::FLOP) st = FLOP;
   else if (stage == Stage::TURN) st = TURN;
   else if (stage == Stage::RIVER) st = RIVER;

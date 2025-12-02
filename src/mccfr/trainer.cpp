@@ -1,8 +1,10 @@
 #include "../../include/mccfr/trainer.h"
 #include <iostream>
 #include <random>
-#include <fstream>
+// #include <fstream>
 #include <ctime>
+// #include <set>
+// #include <iomanip>
 
 Trainer::Trainer(GameState *g) : game(g) {}
 
@@ -13,15 +15,90 @@ Trainer::~Trainer() {
 }
 
 void Trainer::train(int iterations) {
-  for (int i = 0; i < iterations; ++i) {
-    if (i % 100 == 0 && i > 0) {
-      std::cout << "Iteration " << i << "/" << iterations << " ("
-                << (100.0 * i / iterations) << "%)\n";
+  std::cerr << "TRAIN: Entered. game ptr = " << game << "\n";
+  std::cerr.flush();
+
+  if (!game) {
+    std::cerr << "ERROR: game pointer is NULL!\n";
+    return;
+  }
+
+  std::cerr << "TRAIN: Checking num_players...\n";
+  std::cerr.flush();
+
+  if (game->num_players == 0) {
+    std::cerr << "TRAIN: Initializing players...\n";
+    game->num_players = 2;
+    game->small_blind_amount = 10;
+    game->big_blind_amount = 20;
+    game->dealer_index = 0;
+    game->players.clear();
+    for (int i = 0; i < game->num_players; ++i) {
+      game->players.emplace_back(i, 1000, false);
     }
+    std::cerr << "TRAIN: Players initialized.\n";
+  }
+
+  std::cout << "Starting training loop with " << game->num_players << " players\n";
+  std::cout << "Equity module ptr: " << (game->equity_module ? "valid" : "NULL") << "\n";
+  std::cout << "Risk profiler ptr: " << (game->risk_profiler ? "valid" : "NULL") << "\n";
+
+  for (int i = 0; i < iterations; ++i) {
+    if (i == 0) {
+      std::cout << "Starting iteration 0...\n";
+    }
+
+    if (i % 500 == 0 && i > 0) {
+      std::cout << "Iteration " << i << "/" << iterations << " ("
+                << std::fixed << std::setprecision(1) << (100.0 * i / iterations)
+                << "%) - " << node_map.size() << " nodes\n";
+    }
+
     game->start_hand();
+
+    if (i == 0) {
+      std::cout << "After start_hand: players=" << game->players.size()
+                << ", pot=" << game->pot_size << "\n";
+      for (int p = 0; p < game->num_players; ++p) {
+        std::cout << "  Player " << p << ": cards=" << game->players[p].hole_cards.size()
+                  << ", stack=" << game->players[p].stack << "\n";
+      }
+    }
+
+    int sb_pos = (game->dealer_index + 1) % game->num_players;
+    int bb_pos = (game->dealer_index + 2) % game->num_players;
+
+    game->players[sb_pos].stack -= game->small_blind_amount;
+    game->players[sb_pos].current_bet = game->small_blind_amount;
+    game->pot_size += game->small_blind_amount;
+
+    game->players[bb_pos].stack -= game->big_blind_amount;
+    game->players[bb_pos].current_bet = game->big_blind_amount;
+    game->pot_size += game->big_blind_amount;
+    game->current_street_highest_bet = game->big_blind_amount;
+
+    game->current_player_index = (bb_pos + 1) % game->num_players;
+
     for (int p = 0; p < game->num_players; ++p) {
+      if (i == 0) {
+        std::cout << "About to copy state for player " << p << "\n";
+      }
+
       GameState sim_state = *game;
+      sim_state.risk_profiler = nullptr;
+      sim_state.equity_module = game->equity_module;
+
+      if (i == 0) {
+        std::cout << "State copied. About to call CFR for player " << p << "\n";
+        std::cout << "  sim_state: players=" << sim_state.players.size()
+                  << ", equity_module=" << (sim_state.equity_module ? "valid" : "NULL") << "\n";
+      }
+
       cfr(sim_state, p, 1.0);
+
+      if (i == 0) {
+        std::cout << "CFR returned for player " << p << "\n";
+      }
     }
 
     std::time_t curr_time = std::time(nullptr);
@@ -35,11 +112,34 @@ void Trainer::train(int iterations) {
 }
 
 double Trainer::cfr(GameState &state, int player_id, double history_prob) {
+  static int terminal_count = 0;
+  static int info_set_call_count = 0;
+  static int cfr_call_count = 0;
+  static std::set<std::string> unique_info_sets;
+
+  cfr_call_count++;
+
+  if (cfr_call_count == 1) {
+    std::cout << "FIRST CFR CALL: player_id=" << player_id
+              << ", players=" << state.players.size()
+              << ", stage=" << (int)state.stage << "\n";
+  }
+
   if (state.is_terminal()) {
+    terminal_count++;
     Player *p = state.get_player(player_id);
     if (!p)
       return 0.0;
-    return p->stack - 1000.0;
+
+    double utility = p->stack - 1000.0;
+
+    if (terminal_count <= 50) {
+      std::cout << "Terminal #" << terminal_count << ": player " << player_id
+                << " stack=" << p->stack << " utility=" << utility
+                << " stage=" << (int)state.stage << " pot=" << state.pot_size << "\n";
+    }
+
+    return utility;
   }
 
   if (state.is_betting_round_over()) {
@@ -48,18 +148,49 @@ double Trainer::cfr(GameState &state, int player_id, double history_prob) {
       return cfr(state, player_id, history_prob);
   }
 
+  if (cfr_call_count <= 5) {
+    std::cout << "CFR call #" << cfr_call_count << ": Getting current player...\n";
+    std::cout << "  current_player_index=" << state.current_player_index
+              << ", num_players=" << state.num_players << "\n";
+  }
+
   Player *curr_player = state.get_current_player();
-  if (!curr_player)
+
+  if (!curr_player) {
+    std::cout << "ERROR: get_current_player returned nullptr!\n";
     return 0.0;
+  }
+
+  if (cfr_call_count <= 5) {
+    std::cout << "  Got player " << curr_player->id << ", computing info set...\n";
+  }
 
   std::string info_set = state.compute_information_set(curr_player->id);
   std::vector<Action> legal_actions = state.get_legal_actions();
+
+  info_set_call_count++;
+  unique_info_sets.insert(info_set);
+
+  if (info_set_call_count <= 100) {
+    std::cout << "InfoSet #" << info_set_call_count << ": \"" << info_set << "\"\n";
+    std::cout << "  Stage=" << (int)state.stage << " Pot=" << state.pot_size
+              << " Board=" << state.community_cards.size() << " cards\n";
+  }
+
+  if (info_set_call_count % 5000 == 0) {
+    std::cout << "After " << info_set_call_count << " CFR calls: "
+              << unique_info_sets.size() << " unique info sets, "
+              << node_map.size() << " nodes in map\n";
+  }
 
   if (legal_actions.empty())
     return 0.0;
 
   if (node_map.find(info_set) == node_map.end()) {
     node_map[info_set] = new Node(legal_actions.size());
+    if (node_map.size() <= 20) {
+      std::cout << "Created node #" << node_map.size() << " for info_set: \"" << info_set << "\"\n";
+    }
   }
   Node *node = node_map[info_set];
 

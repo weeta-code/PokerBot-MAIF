@@ -17,11 +17,10 @@ Player::Player(int _id, double _stack, bool _is_human)
 
 // game_state constructor
 GameState::GameState(RiskProfiler *rp, EquityModule *em)
-    : risk_profiler(rp), equity_module(em) {
-  pot_size = 0;
-  current_street_highest_bet = 0;
-  stage = Stage::START;
-  // stage = Stage::PREFLOP;
+    : risk_profiler(rp), equity_module(em), pot_size(0),
+      current_street_highest_bet(0), num_players(0), dealer_index(0),
+      current_player_index(0), small_blind_pos(0), big_blind_pos(0),
+      small_blind_amount(0), big_blind_amount(0), stage(Stage::START) {
 }
 
 void GameState::init_deck() {
@@ -142,22 +141,25 @@ void GameState::deal_community_cards() {
 }
 
 void GameState::next_street() {
-  // logic for the next turn
-  // preflop -> flop -> turn -> river -> showdown
-  // reset all stats first
+  static int street_transition_count = 0;
+  street_transition_count++;
+
+  if (street_transition_count <= 20) {
+    cout << "STREET TRANSITION #" << street_transition_count << "\n";
+    cout << "  Before: stage=" << (int)stage << ", board size=" << community_cards.size() << "\n";
+  }
+
   for (auto &p : players) {
     p.current_bet = 0;
   }
   current_street_highest_bet = 0;
 
-  // move player to the left of dealer
   current_player_index = (dealer_index + 1) % num_players;
   while (players[current_player_index].is_folded ||
          players[current_player_index].is_all_in) {
     current_player_index = (current_player_index + 1) % num_players;
   }
 
-  // move to next stage
   if (stage == Stage::START)
     stage = Stage::PREFLOP;
   else if (stage == Stage::PREFLOP)
@@ -170,6 +172,10 @@ void GameState::next_street() {
     stage = Stage::SHOWDOWN;
 
   deal_community_cards();
+
+  if (street_transition_count <= 20) {
+    cout << "  After: stage=" << (int)stage << ", board size=" << community_cards.size() << "\n";
+  }
 }
 
 bool GameState::record_action(int player_idx, Action action) {
@@ -181,8 +187,8 @@ bool GameState::record_action(int player_idx, Action action) {
   if (action.type == ActionType::FOLD) {
     p.is_folded = true;
     p.times_folded++;
-    cout << p.id << " Fold \n";
-    risk_profiler->update_player_profile(p.id, "fold", 0, pot_size);
+    if (risk_profiler)
+      risk_profiler->update_player_profile(p.id, "fold", 0, pot_size);
     return true;
   }
 
@@ -201,9 +207,10 @@ bool GameState::record_action(int player_idx, Action action) {
 
     p.times_called++;
 
-    cout << p.id << " Call " << call_amount << ".\n";
-    risk_profiler->update_stack(p.id, call_amount);
-    risk_profiler->update_player_profile(p.id, "call", call_amount, pot_size);
+    if (risk_profiler) {
+      risk_profiler->update_stack(p.id, call_amount);
+      risk_profiler->update_player_profile(p.id, "call", call_amount, pot_size);
+    }
     return true;
   }
 
@@ -223,9 +230,10 @@ bool GameState::record_action(int player_idx, Action action) {
     current_street_highest_bet = action.amount;
     p.times_raised++;
 
-    cout << p.id << " Bets " << action.amount << ".\n";
-    risk_profiler->update_stack(p.id, actual_bet);
-    risk_profiler->update_player_profile(p.id, "bet", actual_bet, pot_size);
+    if (risk_profiler) {
+      risk_profiler->update_stack(p.id, actual_bet);
+      risk_profiler->update_player_profile(p.id, "bet", actual_bet, pot_size);
+    }
     return true;
   }
 
@@ -245,14 +253,14 @@ bool GameState::record_action(int player_idx, Action action) {
     current_street_highest_bet = action.amount;
     p.times_raised++;
 
-    cout << p.id << " Raises to " << action.amount << ".\n";
-    risk_profiler->update_stack(p.id, actual_raise);
-    risk_profiler->update_player_profile(p.id, "raise", actual_raise, pot_size);
+    if (risk_profiler) {
+      risk_profiler->update_stack(p.id, actual_raise);
+      risk_profiler->update_player_profile(p.id, "raise", actual_raise, pot_size);
+    }
     return true;
   }
 
   if (action.type == ActionType::CHECK) {
-    cout << p.id << " Checks.\n";
     return true;
   }
 
@@ -266,9 +274,10 @@ bool GameState::record_action(int player_idx, Action action) {
     if (p.current_bet > current_street_highest_bet)
       current_street_highest_bet = p.current_bet;
 
-    cout << p.id << " All-In " << all_in_amount << ".\n";
-    risk_profiler->update_stack(p.id, all_in_amount);
-    risk_profiler->update_player_profile(p.id, "allin", all_in_amount, pot_size);
+    if (risk_profiler) {
+      risk_profiler->update_stack(p.id, all_in_amount);
+      risk_profiler->update_player_profile(p.id, "allin", all_in_amount, pot_size);
+    }
     return true;
   }
 
@@ -433,12 +442,20 @@ string GameState::compute_information_set(int player_id) {
   std::string info;
   Player *p = get_player(player_id);
 
+  if (!p) {
+    return "INVALID_PLAYER";
+  }
+
   street st = PRE;
   if (stage == Stage::FLOP) st = FLOP;
   else if (stage == Stage::TURN) st = TURN;
   else if (stage == Stage::RIVER) st = RIVER;
 
-  int bucket = equity_module->bucketize_hand(p->hole_cards, community_cards, st);
+  int bucket = 0;
+  if (equity_module && p->hole_cards.size() >= 2) {
+    bucket = equity_module->bucketize_hand(p->hole_cards, community_cards, st);
+  }
+
   info += std::to_string(bucket) + "|";
   info += std::to_string((int)stage) + "|";
   info += std::to_string(pot_size) + "|";

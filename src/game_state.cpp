@@ -121,34 +121,20 @@ void GameState::start_hand() {
 
 void GameState::deal_community_cards() {
   if (stage == Stage::FLOP) {
-    // burn
     draw_card();
     community_cards.push_back(draw_card());
     community_cards.push_back(draw_card());
     community_cards.push_back(draw_card());
-    cout << "Flop \n";
   } else if (stage == Stage::TURN) {
-    // burn
     draw_card();
     community_cards.push_back(draw_card());
-    cout << "Turn\n";
   } else if (stage == Stage::RIVER) {
-    // burn
     draw_card();
     community_cards.push_back(draw_card());
-    cout << "River \n";
   }
 }
 
 void GameState::next_street() {
-  static int street_transition_count = 0;
-  street_transition_count++;
-
-  if (street_transition_count <= 20) {
-    cout << "STREET TRANSITION #" << street_transition_count << "\n";
-    cout << "  Before: stage=" << (int)stage << ", board size=" << community_cards.size() << "\n";
-  }
-
   for (auto &p : players) {
     p.current_bet = 0;
   }
@@ -187,10 +173,6 @@ void GameState::next_street() {
     stage = Stage::SHOWDOWN;
 
   deal_community_cards();
-
-  if (street_transition_count <= 20) {
-    cout << "  After: stage=" << (int)stage << ", board size=" << community_cards.size() << "\n";
-  }
 }
 
 bool GameState::record_action(int player_idx, Action action) {

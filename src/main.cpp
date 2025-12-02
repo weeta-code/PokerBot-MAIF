@@ -425,35 +425,17 @@ void train_mccfr(Trainer &trainer) {
 }
 
 int main(int argc, char *argv[]) {
-  cout << "Program started. argc=" << argc << "\n";
-  cout.flush();
-
-  cout << "Creating RiskProfiler...\n";
-  cout.flush();
   RiskProfiler rp;
-
-  cout << "Creating EquityModule...\n";
-  cout.flush();
   EquityModule em;
-
-  cout << "Creating GameState...\n";
-  cout.flush();
   GameState game(&rp, &em);
-
-  cout << "Creating Trainer...\n";
-  cout.flush();
   Trainer trainer(&game);
-
-  cout << "Checking command line args...\n";
-  cout.flush();
 
   if (argc == 3 && string(argv[1]) == "--train") {
     int iterations = atoi(argv[2]);
-    cout << "Training with " << iterations << " iterations...\n";
-    cout.flush();
+    cout << "Training " << iterations << " iterations...\n";
     trainer.train(iterations);
     trainer.save_to_file("poker_model.dat");
-    cout << "Training complete and saved!\n";
+    cout << "Complete! Saved to poker_model.dat\n";
     return 0;
   }
 

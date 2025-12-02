@@ -13,7 +13,7 @@ private:
   GameState *game;
   std::unordered_map<InfoSetKey, Node *> node_map;
 
-  double cfr(GameState &state, int player_id, double history_prob);
+  double cfr(GameState &state, int player_id, double history_prob, int depth = 0);
 
 public:
   explicit Trainer(GameState *game);

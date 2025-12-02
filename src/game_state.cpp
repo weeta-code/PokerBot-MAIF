@@ -7,7 +7,7 @@
 Player::Player(int _id, double _stack, bool _is_human)
     : id(_id), stack(_stack), current_bet(0), is_folded(false),
       is_all_in(false), is_human(_is_human), times_folded(0), times_raised(0),
-      times_called(0), hands_played(0) {
+      times_called(0), hands_played(0), has_acted_this_street(false) {
   // init default profile
   profile.hands_observed = 0;
   profile.hands_played = 0;
@@ -20,8 +20,7 @@ GameState::GameState(RiskProfiler *rp, EquityModule *em)
     : risk_profiler(rp), equity_module(em), pot_size(0),
       current_street_highest_bet(0), num_players(0), dealer_index(0),
       current_player_index(0), small_blind_pos(0), big_blind_pos(0),
-      small_blind_amount(0), big_blind_amount(0), stage(Stage::START) {
-}
+      small_blind_amount(0), big_blind_amount(0), stage(Stage::START) {}
 
 void GameState::init_deck() {
   deck.clear();
@@ -100,6 +99,7 @@ void GameState::start_hand() {
     p.is_folded = false;
     p.is_all_in = false;
     p.current_bet = 0;
+    p.has_acted_this_street = false;
 
     // deal 2 cards to players
     p.hole_cards.push_back(draw_card());
@@ -137,6 +137,7 @@ void GameState::deal_community_cards() {
 void GameState::next_street() {
   for (auto &p : players) {
     p.current_bet = 0;
+    p.has_acted_this_street = false;
   }
   current_street_highest_bet = 0;
 
@@ -180,6 +181,7 @@ bool GameState::record_action(int player_idx, Action action) {
   Player &p = players[player_idx];
 
   history.push_back(action);
+  p.has_acted_this_street = true;
 
   if (action.type == ActionType::FOLD) {
     p.is_folded = true;
@@ -252,7 +254,8 @@ bool GameState::record_action(int player_idx, Action action) {
 
     if (risk_profiler) {
       risk_profiler->update_stack(p.id, actual_raise);
-      risk_profiler->update_player_profile(p.id, "raise", actual_raise, pot_size);
+      risk_profiler->update_player_profile(p.id, "raise", actual_raise,
+                                           pot_size);
     }
     return true;
   }
@@ -273,7 +276,8 @@ bool GameState::record_action(int player_idx, Action action) {
 
     if (risk_profiler) {
       risk_profiler->update_stack(p.id, all_in_amount);
-      risk_profiler->update_player_profile(p.id, "allin", all_in_amount, pot_size);
+      risk_profiler->update_player_profile(p.id, "allin", all_in_amount,
+                                           pot_size);
     }
     return true;
   }
@@ -338,17 +342,32 @@ int GameState::get_active_player_count() {
 }
 
 void GameState::resolve_winner() {
-  cout << "\n Showdown: \n";
+  cout << "\nShowdown:\n";
 
-  // here we use equity_module to evaluate hands
-  // Prolly, iterate all non-folded players, run evaluate_hand
-  // find max/best hand
-  // hand pot to winner
+  int best_score = -1;
+  int winner_id = -1;
 
-  // placeholder for later integration
-  cout << "TODO: find winner using equity_module to evaluate hands \n";
-  cout << "TODO: update winner pot \n";
-  cout << "TODO: print leaderboard of everyone's gain \n";
+  for (auto &p : players) {
+    if (p.is_folded)
+      continue;
+
+    std::vector<Card> hand = p.hole_cards;
+    hand.insert(hand.end(), community_cards.begin(), community_cards.end());
+
+    int score = equity_module->evaluate_7_cards(hand);
+
+    if (score > best_score) {
+      best_score = score;
+      winner_id = p.id;
+    }
+  }
+
+  if (winner_id >= 0) {
+    Player *winner = get_player(winner_id);
+    winner->stack += pot_size;
+    cout << "Player " << winner_id << " wins pot of " << pot_size << "!\n";
+    cout << "Final stack: " << winner->stack << "\n";
+  }
 }
 
 Action GameState::get_last_action() { return history.back(); }
@@ -364,6 +383,8 @@ Player *GameState::get_player(int player_id) {
 bool GameState::is_betting_round_over() {
   for (const auto &p : players) {
     if (!p.is_folded && !p.is_all_in) {
+      if (!p.has_acted_this_street)
+        return false;
       if (p.current_bet != current_street_highest_bet)
         return false;
     }
@@ -444,9 +465,12 @@ string GameState::compute_information_set(int player_id) {
   }
 
   street st = PRE;
-  if (stage == Stage::FLOP) st = FLOP;
-  else if (stage == Stage::TURN) st = TURN;
-  else if (stage == Stage::RIVER) st = RIVER;
+  if (stage == Stage::FLOP)
+    st = FLOP;
+  else if (stage == Stage::TURN)
+    st = TURN;
+  else if (stage == Stage::RIVER)
+    st = RIVER;
 
   int bucket = 0;
   if (equity_module && p->hole_cards.size() >= 2) {
@@ -462,7 +486,13 @@ string GameState::compute_information_set(int player_id) {
   info += std::to_string(stack_bucket) + "|";
 
   for (auto &a : history) {
-    info += std::to_string(a.player_id) + ":" + std::to_string((int)a.type) + ";";
+    info +=
+        std::to_string(a.player_id) + ":" + std::to_string((int)a.type) + ";";
   }
+
+  // Append number of legal actions to prevent collisions
+  std::vector<Action> legal = get_legal_actions();
+  info += "|" + std::to_string(legal.size());
+
   return info;
 }

@@ -77,6 +77,8 @@ public:
   int bucketize_hand(const std::vector<Card> &hero_hand,
                      const std::vector<Card> &board_cards, street street);
 
+  int evaluate_7_cards(const std::vector<Card> &cards);
+
 private:
 
   double compute_equity_vs_range(
@@ -84,7 +86,6 @@ private:
 
   double compute_baseline_value(double equity, double pot_size);
 
-  int evaluate_7_cards(const std::vector<Card> &cards);
   int evaluate_5_cards(const std::vector<Card> &cards);
 };
 

@@ -1,7 +1,7 @@
 #include "../include/game_state.h"
 #include "../include/mccfr/trainer.h"
-#include <iostream>
 #include <iomanip>
+#include <iostream>
 
 using namespace std;
 
@@ -87,21 +87,6 @@ int next_active_player(GameState &game, int start) {
   return idx;
 }
 
-bool betting_round_complete(GameState &game) {
-  int active_count = 0;
-  int highest_bet = game.current_street_highest_bet;
-
-  for (auto &p : game.players) {
-    if (!p.is_folded && !p.is_all_in) {
-      active_count++;
-      if (p.current_bet != highest_bet)
-        return false;
-    }
-  }
-
-  return active_count <= 1 || (active_count > 0 && highest_bet > 0);
-}
-
 void unified_play_mode(Trainer &trainer) {
   RiskProfiler rp;
   EquityModule em;
@@ -183,6 +168,10 @@ void unified_play_mode(Trainer &trainer) {
   if (game.players[bb_pos].stack == 0)
     game.players[bb_pos].is_all_in = true;
 
+  // Reset has_acted for blind players - they still need to act in preflop
+  game.players[sb_pos].has_acted_this_street = false;
+  game.players[bb_pos].has_acted_this_street = false;
+
   game.current_player_index = (bb_pos + 1) % num_players;
   while (game.players[game.current_player_index].is_folded ||
          game.players[game.current_player_index].is_all_in) {
@@ -190,7 +179,7 @@ void unified_play_mode(Trainer &trainer) {
   }
 
   while (!game.is_terminal()) {
-    while (!betting_round_complete(game) &&
+    while (!game.is_betting_round_over() &&
            game.get_active_player_count() > 1) {
       Player *p = game.get_current_player();
 

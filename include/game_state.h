@@ -40,6 +40,8 @@ struct Player {
 
   PlayerProfile profile;
 
+  bool has_acted_this_street;
+
   Player(int _id, double _stack, bool _is_human);
 };
 

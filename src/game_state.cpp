@@ -154,10 +154,25 @@ void GameState::next_street() {
   }
   current_street_highest_bet = 0;
 
+  int active_count = 0;
+  for (const auto &p : players) {
+    if (!p.is_folded && !p.is_all_in) {
+      active_count++;
+    }
+  }
+
+  if (active_count == 0) {
+    stage = Stage::SHOWDOWN;
+    return;
+  }
+
   current_player_index = (dealer_index + 1) % num_players;
-  while (players[current_player_index].is_folded ||
-         players[current_player_index].is_all_in) {
+  int attempts = 0;
+  while ((players[current_player_index].is_folded ||
+          players[current_player_index].is_all_in) &&
+         attempts < num_players) {
     current_player_index = (current_player_index + 1) % num_players;
+    attempts++;
   }
 
   if (stage == Stage::START)
@@ -458,11 +473,14 @@ string GameState::compute_information_set(int player_id) {
 
   info += std::to_string(bucket) + "|";
   info += std::to_string((int)stage) + "|";
-  info += std::to_string(pot_size) + "|";
-  info += std::to_string(p->stack) + "|";
 
-  for (auto &a : history)
-    info += std::to_string(a.player_id) + ":" + std::to_string((int)a.type) +
-            ":" + std::to_string(a.amount) + ";";
+  int pot_bucket = pot_size / 50;
+  int stack_bucket = p->stack / 100;
+  info += std::to_string(pot_bucket) + "|";
+  info += std::to_string(stack_bucket) + "|";
+
+  for (auto &a : history) {
+    info += std::to_string(a.player_id) + ":" + std::to_string((int)a.type) + ";";
+  }
   return info;
 }

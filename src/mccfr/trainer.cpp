@@ -1,10 +1,9 @@
 #include "../../include/mccfr/trainer.h"
 #include <iostream>
 #include <random>
-// #include <fstream>
-#include <ctime>
-// #include <set>
-// #include <iomanip>
+#include <fstream>
+#include <set>
+#include <iomanip>
 
 Trainer::Trainer(GameState *g) : game(g) {}
 
@@ -142,10 +141,25 @@ double Trainer::cfr(GameState &state, int player_id, double history_prob) {
     return utility;
   }
 
-  if (state.is_betting_round_over()) {
+  if (state.is_betting_round_over() && state.stage != Stage::SHOWDOWN) {
     state.next_street();
-    if (state.is_terminal())
-      return cfr(state, player_id, history_prob);
+  }
+
+  if (state.is_terminal()) {
+    terminal_count++;
+    Player *p = state.get_player(player_id);
+    if (!p)
+      return 0.0;
+
+    double utility = p->stack - 1000.0;
+
+    if (terminal_count <= 50) {
+      std::cout << "Terminal #" << terminal_count << ": player " << player_id
+                << " stack=" << p->stack << " utility=" << utility
+                << " stage=" << (int)state.stage << " pot=" << state.pot_size << "\n";
+    }
+
+    return utility;
   }
 
   if (cfr_call_count <= 5) {

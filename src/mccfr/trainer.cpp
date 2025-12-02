@@ -98,6 +98,43 @@ void Trainer::train(int iterations) {
       if (i == 0) {
         std::cout << "CFR returned for player " << p << "\n";
       }
+>>>>>>> 4e2aa3d (feat: fixed training)
+    }
+
+    int sb_pos = (game->dealer_index + 1) % game->num_players;
+    int bb_pos = (game->dealer_index + 2) % game->num_players;
+
+    game->players[sb_pos].stack -= game->small_blind_amount;
+    game->players[sb_pos].current_bet = game->small_blind_amount;
+    game->pot_size += game->small_blind_amount;
+
+    game->players[bb_pos].stack -= game->big_blind_amount;
+    game->players[bb_pos].current_bet = game->big_blind_amount;
+    game->pot_size += game->big_blind_amount;
+    game->current_street_highest_bet = game->big_blind_amount;
+
+    game->current_player_index = (bb_pos + 1) % game->num_players;
+
+    for (int p = 0; p < game->num_players; ++p) {
+      if (i == 0) {
+        std::cout << "About to copy state for player " << p << "\n";
+      }
+
+      GameState sim_state = *game;
+      sim_state.risk_profiler = nullptr;
+      sim_state.equity_module = game->equity_module;
+
+      if (i == 0) {
+        std::cout << "State copied. About to call CFR for player " << p << "\n";
+        std::cout << "  sim_state: players=" << sim_state.players.size()
+                  << ", equity_module=" << (sim_state.equity_module ? "valid" : "NULL") << "\n";
+      }
+
+      cfr(sim_state, p, 1.0);
+
+      if (i == 0) {
+        std::cout << "CFR returned for player " << p << "\n";
+      }
     }
 
     std::time_t curr_time = std::time(nullptr);
@@ -160,6 +197,12 @@ double Trainer::cfr(GameState &state, int player_id, double history_prob) {
     }
 
     return utility;
+  }
+
+  if (cfr_call_count <= 5) {
+    std::cout << "CFR call #" << cfr_call_count << ": Getting current player...\n";
+    std::cout << "  current_player_index=" << state.current_player_index
+              << ", num_players=" << state.num_players << "\n";
   }
 
   if (cfr_call_count <= 5) {

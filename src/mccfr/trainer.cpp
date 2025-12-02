@@ -107,7 +107,7 @@ double Trainer::cfr(GameState &state, int player_id, double history_prob, int de
     return utility;
   }
 
-  if (cfr_call_count <= 5) {
+  if (cfr_call_count % 100 == 0) {
     std::cout << "CFR call #" << cfr_call_count << ": Getting current player...\n";
     std::cout << "  current_player_index=" << state.current_player_index
               << ", num_players=" << state.num_players << "\n";
@@ -169,7 +169,10 @@ double Trainer::cfr(GameState &state, int player_id, double history_prob, int de
     int sampled = dist(gen);
 
     GameState next_state = state;
-    next_state.apply_action(legal_actions[sampled]);
+
+    // solved potential seg fault? making sure idx ix within legal_actions
+    int idx = sampled % legal_actions.size();
+    next_state.apply_action(legal_actions[idx]);
     return cfr(next_state, player_id, history_prob * strategy[sampled], depth + 1);
   }
 }
@@ -202,7 +205,9 @@ Action Trainer::get_action_recommendation(GameState &state, int player_id,
   std::discrete_distribution<> dist(probabilities.begin(), probabilities.end());
   int selected = dist(gen);
 
-  return legal_actions[selected];
+  // solved potential seg fault? making sure idx ix within legal_actions
+  int idx = selected % legal_actions.size();
+  return legal_actions[idx];
 }
 
 void Trainer::save_to_file(const std::string &filename) {

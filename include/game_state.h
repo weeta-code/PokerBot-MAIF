@@ -57,8 +57,12 @@ struct GameState {
   vector<Card> deck;
   vector<Card> community_cards;
 
-  Stage stage;
   std::vector<Action> history;
+
+  // incapsulate other modules to external engines
+  RiskProfiler *risk_profiler;
+  EquityModule *equity_module;
+
   int pot_size;
   int current_street_highest_bet;
 
@@ -71,9 +75,7 @@ struct GameState {
   int small_blind_amount;
   int big_blind_amount;
 
-  // incapsulate other modules to external engines
-  RiskProfiler *risk_profiler;
-  EquityModule *equity_module;
+  Stage stage;
 
   GameState(RiskProfiler *rp, EquityModule *em);
 

@@ -13,14 +13,15 @@ private:
   GameState *game;
   std::unordered_map<InfoSetKey, Node *> node_map;
 
-  double cfr(GameState &state, int player_id, double history_prob, int depth = 0);
+  double cfr(GameState &state, int player_id, double history_prob,
+             int depth = 0);
 
 public:
   explicit Trainer(GameState *game);
 
   ~Trainer();
 
-  void train(int iterations);
+  void train(int iterations, int num_players = 2);
 
   std::vector<double> get_strategy(const std::string &info_set);
 

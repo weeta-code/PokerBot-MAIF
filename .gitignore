@@ -6,3 +6,5 @@ build/
 *.md
 *.sh
 *.lldb
+*.gz
+.claude/

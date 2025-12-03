@@ -15,7 +15,7 @@ Trainer::~Trainer() {
   }
 }
 
-void Trainer::train(int iterations) {
+void Trainer::train(int iterations, int num_players) {
   if (!game) {
     return;
   }
@@ -34,17 +34,27 @@ void Trainer::train(int iterations) {
                 << node_map.size() << " nodes\n";
     }
 
-    game->num_players = 2;
+    // Use configurable num_players instead of hardcoded 2
+    game->num_players = num_players;
     game->dealer_index = 0;
     game->players.clear();
-    for (int p = 0; p < game->num_players; ++p) {
+    for (int p = 0; p < num_players; ++p) {
       game->players.emplace_back(p, 1000, false);
     }
 
     game->start_hand();
 
-    int sb_pos = (game->dealer_index + 1) % game->num_players;
-    int bb_pos = (game->dealer_index + 2) % game->num_players;
+    // Blind positions: for heads-up (2 players), dealer is SB
+    // For 3+, SB is to dealer's left, BB is 2 left of dealer
+    int sb_pos, bb_pos;
+    if (num_players == 2) {
+      sb_pos = game->dealer_index;                     // Heads-up: dealer is SB
+      bb_pos = (game->dealer_index + 1) % num_players; // Other player is BB
+    } else {
+      sb_pos = (game->dealer_index + 1) %
+               num_players; // Multi-way: SB left of dealer
+      bb_pos = (game->dealer_index + 2) % num_players; // BB 2 left of dealer
+    }
 
     game->players[sb_pos].stack -= game->small_blind_amount;
     game->players[sb_pos].current_bet = game->small_blind_amount;
@@ -55,9 +65,12 @@ void Trainer::train(int iterations) {
     game->pot_size += game->big_blind_amount;
     game->current_street_highest_bet = game->big_blind_amount;
 
-    game->current_player_index = (bb_pos + 1) % game->num_players;
+    // First to act preflop is left of BB (UTG in multi-way, SB in heads-up
+    // after blinds posted)
+    game->current_player_index = (bb_pos + 1) % num_players;
 
-    for (int p = 0; p < game->num_players; ++p) {
+    // External sampling: traverse from each player's perspective
+    for (int p = 0; p < num_players; ++p) {
       GameState sim_state = *game;
       sim_state.risk_profiler = nullptr;
       sim_state.equity_module = game->equity_module;

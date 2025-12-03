@@ -54,6 +54,8 @@ struct Action {
       : player_id(pid), type(t), amount(amt) {}
 };
 
+enum class StateType { CHANCE, PLAY, TERMINAL };
+
 struct GameState {
   vector<Player> players;
   vector<Card> deck;
@@ -78,6 +80,7 @@ struct GameState {
   int big_blind_amount;
 
   Stage stage;
+  StateType type; // Current state type
 
   GameState(RiskProfiler *rp, EquityModule *em);
 
@@ -102,6 +105,8 @@ struct GameState {
   // MCCFR methods
   std::vector<Action> get_legal_actions();
   void apply_action(Action action);
+  void apply_chance(const std::vector<Card> &manual_cards =
+                        {}); // Handle chance nodes (dealing cards)
   bool is_terminal();
   string compute_information_set(int player_id);
   Player *get_player(int player_id);
@@ -110,6 +115,7 @@ struct GameState {
   int get_active_player_count();
   Player *get_current_player();
   void next_player();
+  void determine_next_state(); // Core state transition logic
 
   // helper functions kat
   Action get_last_action();

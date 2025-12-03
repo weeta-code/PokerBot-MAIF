@@ -3,8 +3,11 @@
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <sstream>
 
 using namespace std;
+
+// --- Helper Functions ---
 
 Card parse_card(const string &s) {
   if (s.length() != 2)
@@ -72,126 +75,57 @@ Card parse_card(const string &s) {
   default:
     suit = Suit::CLUBS;
   }
-
   return Card(r, suit);
 }
 
-int next_active_player(GameState &game, int start) {
-  int idx = start;
-  int attempts = 0;
-  do {
-    idx = (idx + 1) % game.num_players;
-    attempts++;
-    if (attempts > game.num_players)
-      return -1;
-  } while (game.players[idx].is_folded || game.players[idx].is_all_in);
-  return idx;
-}
-
-std::vector<Card> ask_user_for_cards(Stage stage) {
+std::vector<Card> parse_cards(const string &line) {
   std::vector<Card> cards;
-
-  if (stage == Stage::START) {
-    cout << "Your hole cards (e.g., Ah Kd): ";
-    string c1, c2;
-    cin >> c1 >> c2;
-    cards.push_back(parse_card(c1));
-    cards.push_back(parse_card(c2));
-  } else if (stage == Stage::PREFLOP) {
-    cout << "\nDealing FLOP...\nEnter flop cards (e.g., 3h 7d Ks): ";
-    string f1, f2, f3;
-    cin >> f1 >> f2 >> f3;
-    cards.push_back(parse_card(f1));
-    cards.push_back(parse_card(f2));
-    cards.push_back(parse_card(f3));
-  } else if (stage == Stage::FLOP) {
-    cout << "\nDealing TURN...\nEnter turn card (e.g., Qc): ";
-    string t;
-    cin >> t;
-    cards.push_back(parse_card(t));
-  } else if (stage == Stage::TURN) {
-    cout << "\nDealing RIVER...\nEnter river card (e.g., 2d): ";
-    string r;
-    cin >> r;
-    cards.push_back(parse_card(r));
+  std::stringstream ss(line);
+  std::string item;
+  while (ss >> item) {
+    cards.push_back(parse_card(item));
   }
-
   return cards;
 }
 
-void unified_play_mode(Trainer &trainer) {
+// --- Solver Mode ---
+
+void solver_mode(Trainer &trainer) {
   RiskProfiler rp;
   EquityModule em;
   GameState game(&rp, &em);
 
-  // Setup
-  int num_players, sb_amount, bb_amount;
+  cout << "\n=== MCCFR Poker Solver (Manual Mode) ===\n";
+
+  int num_players;
+  double stack, sb, bb;
   cout << "Number of players: ";
   cin >> num_players;
-  cin.ignore(10000, '\n');
-  cout << "Small blind amount: ";
-  cin >> sb_amount;
-  cin.ignore(10000, '\n');
-  cout << "Big blind amount: ";
-  cin >> bb_amount;
-  cin.ignore(10000, '\n');
-
-  game.num_players = num_players;
-  game.small_blind_amount = sb_amount;
-  game.big_blind_amount = bb_amount;
-  game.players.clear();
-
-  for (int i = 0; i < num_players; ++i) {
-    int stack;
-    cout << "Player " << i << " stack: ";
-    cin >> stack;
-    cin.ignore(10000, '\n');
-    game.players.emplace_back(i, stack, false);
-    rp.add_player(i, stack);
-  }
-
-  int user_pos;
-  cout << "Which player are you (0-" << (num_players - 1) << "): ";
-  cin >> user_pos;
-  cin.ignore(10000, '\n');
-  game.players[user_pos].is_human = true;
-
-  int dealer_pos;
-  cout << "Dealer button position: ";
-  cin >> dealer_pos;
+  cout << "Stack size: ";
+  cin >> stack;
+  cout << "Small Blind: ";
+  cin >> sb;
+  cout << "Big Blind: ";
+  cin >> bb;
   cin.ignore(10000, '\n');
 
-  game.dealer_index = dealer_pos;
-  game.small_blind_pos = (dealer_pos + 1) % num_players;
-  game.big_blind_pos = (dealer_pos + 2) % num_players;
+  game.init_game_setup(num_players, stack, sb, bb);
 
-  // Start hand
-  game.start_hand();
+  while (true) {
+    cout << "\n--- New Hand ---\n";
+    game.start_hand();
 
-  // Main State Machine Loop
-  while (!game.is_terminal()) {
-    if (game.type == StateType::CHANCE) {
-      // Ask user for cards
-      std::vector<Card> cards = ask_user_for_cards(game.stage);
-      game.apply_chance(cards);
+    // 1. Preflop Input
+    cout << "Enter Hero Cards (e.g. Ah Kd): ";
+    string line;
+    getline(cin, line);
+    std::vector<Card> hero_cards = parse_cards(line);
+    game.set_player_cards(0, hero_cards);
 
-      // Print board after dealing
-      if (game.stage != Stage::START && game.stage != Stage::PREFLOP) {
-        cout << "Board: ";
-        for (auto &c : game.community_cards)
-          cout << c << " ";
-        cout << "\n";
-      }
-    } else if (game.type == StateType::PLAY) {
-      Player *p = game.get_current_player();
-
-      if (p->is_folded || p->is_all_in) {
-        game.determine_next_state();
-        continue;
-      }
-
-      // Display game status
-      cout << "\n========================================\n";
+    // Main Loop
+    while (!game.is_terminal()) {
+      // Display State
+      cout << "\n----------------------------------------\n";
       cout << "Stage: ";
       switch (game.stage) {
       case Stage::PREFLOP:
@@ -210,48 +144,55 @@ void unified_play_mode(Trainer &trainer) {
         cout << "SHOWDOWN";
       }
       cout << " | Pot: " << game.pot_size << "\n";
-      cout << "Board: ";
-      for (auto &c : game.community_cards)
-        cout << c << " ";
-      cout << "\n";
 
-      cout << "\nCurrent Player: " << p->id << " (Stack: " << p->stack << ")\n";
-      if (p->is_human) {
-        cout << "Your Cards: " << p->hole_cards[0] << " " << p->hole_cards[1]
-             << "\n";
-      } else {
-        cout << "Opponent (cards hidden)\n";
+      if (!game.community_cards.empty()) {
+        cout << "Board: ";
+        for (auto &c : game.community_cards)
+          cout << c << " ";
+        cout << "\n";
       }
-      cout << "Current Bet: " << p->current_bet << " | To Call: "
-           << (game.current_street_highest_bet - p->current_bet) << "\n";
 
-      // MCCFR Recommendation
-      std::vector<double> probs;
-      trainer.get_action_recommendation(game, p->id, probs);
-      std::vector<Action> legal = game.get_legal_actions();
+      // Display Equity & Stats
+      if (!hero_cards.empty()) {
+        double eq =
+            em.calculate_display_equity(hero_cards, game.community_cards);
+        cout << "Hero Equity (vs Random): " << std::fixed
+             << std::setprecision(1) << eq * 100 << "%\n";
+      }
 
-      if (!probs.empty() && !legal.empty()) {
-        cout << "\n*** MCCFR Recommendation ***\n";
+      // Display Active Player
+      Player *p = game.get_current_player();
+      cout << "Action on Player " << p->id;
+      if (p->is_human)
+        cout << " (HERO)";
+      else
+        cout << " (Opponent)";
 
-        bool is_uniform = true;
-        double expected = 1.0 / probs.size();
-        for (double prob : probs) {
-          if (std::abs(prob - expected) > 1e-4) {
-            is_uniform = false;
-            break;
-          }
-        }
+      double to_call = game.current_street_highest_bet - p->current_bet;
+      cout << "\n  Stack: " << std::fixed << std::setprecision(2) << p->stack;
+      cout << " | Current Bet: " << p->current_bet;
+      cout << " | To Call: " << to_call << "\n";
 
-        if (is_uniform) {
-          cout << "Suggested: None (Unexplored State - Using Uniform Random)\n";
-        } else {
+      if (!p->is_human) {
+        cout << "  " << rp.get_formatted_stats(p->id) << "\n";
+      }
+
+      // MCCFR Recommendation (for Hero)
+      if (p->is_human) {
+        std::vector<double> probs;
+        trainer.get_action_recommendation(game, p->id, probs);
+        std::vector<Action> legal = game.get_legal_actions();
+
+        cout << "\n*** Solver Recommendation ***\n";
+        if (!probs.empty()) {
           int max_idx = 0;
           for (size_t i = 1; i < probs.size(); ++i) {
             if (probs[i] > probs[max_idx])
               max_idx = i;
           }
           Action best = legal[max_idx];
-          cout << "Suggested: ";
+
+          cout << "Best Action: ";
           switch (best.type) {
           case ActionType::FOLD:
             cout << "FOLD";
@@ -260,135 +201,91 @@ void unified_play_mode(Trainer &trainer) {
             cout << "CHECK";
             break;
           case ActionType::CALL:
-            cout << "CALL " << best.amount;
+            cout << "CALL " << std::fixed << std::setprecision(2)
+                 << best.amount;
             break;
           case ActionType::BET:
-            cout << "BET " << best.amount;
+            cout << "BET " << std::fixed << std::setprecision(2) << best.amount;
             break;
           case ActionType::RAISE:
-            cout << "RAISE to " << best.amount;
+            cout << "RAISE to " << std::fixed << std::setprecision(2)
+                 << best.amount;
             break;
           case ActionType::ALLIN:
-            cout << "ALL-IN " << best.amount;
+            cout << "ALL-IN " << std::fixed << std::setprecision(2)
+                 << best.amount;
             break;
           }
-          cout << " (prob: " << std::fixed << std::setprecision(2)
+          cout << " (" << std::fixed << std::setprecision(1)
                << probs[max_idx] * 100 << "%)\n";
+        } else {
+          cout << "No recommendation available (Unexplored state)\n";
         }
       }
 
-      // Get action
-      Action selected(-1, ActionType::FOLD, 0);
+      // Input Action
+      cout << "\nActions: (f)old, (c)heck/call, (b) <amt> bet/raise, (a)llin\n";
+      cout << "Enter Action: ";
+      string action_str;
+      getline(cin, action_str);
 
-      if (p->is_human) {
+      Action selected(p->id, ActionType::FOLD, 0);
+      if (action_str == "f") {
+        selected = Action(p->id, ActionType::FOLD);
+      } else if (action_str == "c") {
         int call_amt = game.current_street_highest_bet - p->current_bet;
-
-        cout << "\nWhat did you do?\n";
-        cout << "1. FOLD\n";
-        if (call_amt == 0) {
-          cout << "2. CHECK\n";
-          cout << "3. BET\n";
-        } else {
-          cout << "2. CALL\n";
-          cout << "3. RAISE\n";
-        }
-        cout << "4. ALL-IN\n";
-        cout << "Select: ";
-
-        int action;
-        cin >> action;
-        cin.ignore(10000, '\n');
-
-        if (action == 1) {
-          selected = Action(p->id, ActionType::FOLD, 0);
-        } else if (action == 2) {
-          if (call_amt == 0) {
-            selected = Action(p->id, ActionType::CHECK, 0);
-          } else {
-            selected = Action(p->id, ActionType::CALL, call_amt);
-          }
-        } else if (action == 3) {
-          int amt;
-          cout << (call_amt == 0 ? "Bet amount: " : "Raise to: ");
-          cin >> amt;
-          cin.ignore(10000, '\n');
-          if (call_amt == 0) {
-            selected = Action(p->id, ActionType::BET, amt);
-          } else {
-            selected = Action(p->id, ActionType::RAISE, amt);
-          }
-        } else if (action == 4) {
-          selected = Action(p->id, ActionType::ALLIN, p->stack);
-        }
-      } else {
-        // Bot action - use MCCFR
-        if (!legal.empty() && !probs.empty()) {
-          double r = (double)rand() / RAND_MAX;
-          double cumulative = 0.0;
-          int chosen_idx = 0;
-          for (size_t i = 0; i < probs.size(); ++i) {
-            cumulative += probs[i];
-            if (r <= cumulative) {
-              chosen_idx = i;
-              break;
-            }
-          }
-          selected = legal[chosen_idx];
-
-          cout << "Player " << p->id << " did: ";
-          switch (selected.type) {
-          case ActionType::FOLD:
-            cout << "FOLD\n";
-            break;
-          case ActionType::CHECK:
-            cout << "CHECK\n";
-            break;
-          case ActionType::CALL:
-            cout << "CALL " << selected.amount << "\n";
-            break;
-          case ActionType::BET:
-            cout << "BET " << selected.amount << "\n";
-            break;
-          case ActionType::RAISE:
-            cout << "RAISE to " << selected.amount << "\n";
-            break;
-          case ActionType::ALLIN:
-            cout << "ALL-IN " << selected.amount << "\n";
-            break;
-          }
-        }
+        if (call_amt == 0)
+          selected = Action(p->id, ActionType::CHECK);
+        else
+          selected = Action(p->id, ActionType::CALL, call_amt);
+      } else if (action_str == "a") {
+        selected = Action(p->id, ActionType::ALLIN, p->stack);
+      } else if (action_str[0] == 'b') {
+        double amt = stod(action_str.substr(2));
+        if (game.current_street_highest_bet == 0)
+          selected = Action(p->id, ActionType::BET, amt);
+        else
+          selected = Action(p->id, ActionType::RAISE, amt);
       }
 
       game.apply_action(selected);
-    }
-  }
 
-  // Showdown
-  cout << "\n=== HAND COMPLETE ===\n";
-  if (game.get_active_player_count() == 1) {
-    for (auto &p : game.players) {
-      if (!p.is_folded) {
-        p.stack += game.pot_size;
-        cout << "Player " << p.id << " wins pot of " << game.pot_size
-             << " (others folded)\n";
-        cout << "Final stack: " << p.stack << "\n";
-        break;
+      // Check for Street Transition
+      if (game.is_betting_round_over()) {
+        if (game.stage == Stage::RIVER) {
+          cout << "Hand Over (Showdown)\n";
+          break;
+        } else {
+          // Advance Street & Ask for Cards
+          game.next_street();
+          cout << "\nDealing "
+               << (game.stage == Stage::FLOP
+                       ? "FLOP"
+                       : (game.stage == Stage::TURN ? "TURN" : "RIVER"))
+               << "...\n";
+          cout << "Enter Board Cards: ";
+          getline(cin, line);
+          std::vector<Card> new_cards = parse_cards(line);
+          std::vector<Card> current_board = game.community_cards;
+          current_board.insert(current_board.end(), new_cards.begin(),
+                               new_cards.end());
+          game.set_community_cards(current_board);
+        }
       }
     }
-  } else {
-    game.resolve_winner();
+
+    cout << "Play another hand? (y/n): ";
+    string ans;
+    getline(cin, ans);
+    if (ans != "y")
+      break;
   }
 }
 
-void train_mccfr(Trainer &trainer) {
-  int iterations;
-  cout << "Enter training iterations: ";
-  cin >> iterations;
-  trainer.train(iterations);
-  cout << "Training complete.\n";
-}
+// --- Main ---
 
 int main(int argc, char *argv[]) {
+  // Dummy GameState for Trainer init (will be replaced in solver_mode)
   RiskProfiler rp;
   EquityModule em;
   GameState game(&rp, &em);
@@ -399,58 +296,26 @@ int main(int argc, char *argv[]) {
     cout << "Training " << iterations << " iterations...\n";
     trainer.train(iterations);
     trainer.save_to_file("poker_model.dat");
-    cout << "Complete! Saved to poker_model.dat\n";
     return 0;
   }
 
-  cout << "\n=== MCCFR Poker Engine ===\n";
   cout << "1. Train MCCFR\n";
-  cout << "2. Play (MCCFR-Driven)\n";
-  cout << "3. Save Training Data\n";
-  cout << "4. Load Training Data\n";
-  cout << "5. Exit\n";
+  cout << "2. Solver Mode (Manual Input)\n";
   cout << "Select: ";
-
   int choice;
   cin >> choice;
+  cin.ignore(10000, '\n');
 
   if (choice == 1) {
-    train_mccfr(trainer);
-    cout << "\n1. Train More\n";
-    cout << "2. Play (MCCFR-Driven)\n";
-    cout << "3. Save Training Data\n";
-    cout << "4. Exit\n";
-    cout << "Select: ";
-    cin >> choice;
-    if (choice == 3) {
-      trainer.save_to_file("poker_model.dat");
-      return 0;
-    }
-  }
-
-  if (choice == 2) {
-    unified_play_mode(trainer);
-  }
-
-  if (choice == 3) {
+    int iter;
+    cout << "Iterations: ";
+    cin >> iter;
+    trainer.train(iter);
     trainer.save_to_file("poker_model.dat");
-  }
-
-  if (choice == 4) {
+  } else {
+    // Try load model
     trainer.load_from_file("poker_model.dat");
-    cout << "\n1. Train More\n";
-    cout << "2. Play (MCCFR-Driven)\n";
-    cout << "3. Save Training Data\n";
-    cout << "4. Exit\n";
-    cout << "Select: ";
-    cin >> choice;
-    if (choice == 1) {
-      train_mccfr(trainer);
-    } else if (choice == 2) {
-      unified_play_mode(trainer);
-    } else if (choice == 3) {
-      trainer.save_to_file("poker_model.dat");
-    }
+    solver_mode(trainer);
   }
 
   return 0;

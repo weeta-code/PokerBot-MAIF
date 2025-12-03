@@ -3,6 +3,7 @@
 #include <cmath>
 #include <iostream>
 #include <map>
+#include <random>
 
 // --- Internal Hand Evaluation Logic ---
 
@@ -76,7 +77,7 @@ int EquityModule::evaluate_5_cards(const std::vector<Card> &cards) {
   if (pairs == 1)
     return 0x100000;
 
-  return sorted[0].rank; 
+  return sorted[0].rank;
 }
 
 int EquityModule::evaluate_7_cards(const std::vector<Card> &cards) {
@@ -199,48 +200,72 @@ int EquityModule::bucketize_hand(const std::vector<Card> &hero_hand,
   return BucketID::AIR;
 }
 
-double EquityModule::compute_equity_vs_range(
-    int hero_bucket, const std::vector<double> &villain_bucket_distribution) {
+// Fast Monte Carlo simulation for display equity
+double
+EquityModule::calculate_display_equity(const std::vector<Card> &hero_hand,
+                                       const std::vector<Card> &board_cards) {
+  if (hero_hand.size() != 2)
+    return 0.0;
 
-  double total_equity = 0.0;
+  int wins = 0;
+  int ties = 0;
+  int iterations = 1000; // Enough for display precision
 
-  for (size_t v_bucket = 0; v_bucket < villain_bucket_distribution.size();
-       ++v_bucket) {
-    double prob = villain_bucket_distribution[v_bucket];
-    if (prob <= 0.0)
-      continue;
-
-    double win_rate = 0.5; 
-
-    if (hero_bucket > (int)v_bucket) {
-      win_rate = 1.0;
-    } else if (hero_bucket < (int)v_bucket) {
-      win_rate = 0.0;
-    } else {
-      win_rate = 0.5;
+  // Create a full deck
+  std::vector<Card> full_deck;
+  for (int r = 0; r < 13; ++r) {
+    for (int s = 0; s < 4; ++s) {
+      full_deck.emplace_back(static_cast<Rank>(r), static_cast<Suit>(s));
     }
-
-    total_equity += prob * win_rate;
   }
 
-  return total_equity;
-}
+  // Remove known cards
+  auto remove_card = [&](const Card &c) {
+    full_deck.erase(std::remove_if(full_deck.begin(), full_deck.end(),
+                                   [&](const Card &x) {
+                                     return x.rank == c.rank &&
+                                            x.suit == c.suit;
+                                   }),
+                    full_deck.end());
+  };
 
-double EquityModule::compute_baseline_value(double equity, double pot_size) {
-  return equity * pot_size;
-}
+  for (const auto &c : hero_hand)
+    remove_card(c);
+  for (const auto &c : board_cards)
+    remove_card(c);
 
-EquitySummary EquityModule::summarize_state(
-    const std::vector<Card> &hero_hole_cards,
-    const std::vector<Card> &board_cards,
-    const std::vector<double> &villain_bucket_distribution, double pot_size,
-    street street) {
+  std::mt19937 rng(std::random_device{}());
 
-  EquitySummary summary;
-  summary.hero_bucket = bucketize_hand(hero_hole_cards, board_cards, street);
-  summary.equity =
-      compute_equity_vs_range(summary.hero_bucket, villain_bucket_distribution);
-  summary.baseline = compute_baseline_value(summary.equity, pot_size);
+  for (int i = 0; i < iterations; ++i) {
+    std::vector<Card> deck = full_deck;
+    std::shuffle(deck.begin(), deck.end(), rng);
 
-  return summary;
+    // Deal opponent hand
+    std::vector<Card> opp_hand = {deck[0], deck[1]};
+
+    // Deal remaining board
+    std::vector<Card> current_board = board_cards;
+    int board_idx = 2;
+    while (current_board.size() < 5) {
+      current_board.push_back(deck[board_idx++]);
+    }
+
+    // Evaluate
+    std::vector<Card> hero_full = hero_hand;
+    hero_full.insert(hero_full.end(), current_board.begin(),
+                     current_board.end());
+
+    std::vector<Card> opp_full = opp_hand;
+    opp_full.insert(opp_full.end(), current_board.begin(), current_board.end());
+
+    int hero_score = evaluate_7_cards(hero_full);
+    int opp_score = evaluate_7_cards(opp_full);
+
+    if (hero_score > opp_score)
+      wins++;
+    else if (hero_score == opp_score)
+      ties++;
+  }
+
+  return (double)wins / iterations + ((double)ties / iterations) / 2.0;
 }

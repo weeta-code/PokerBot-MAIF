@@ -3,6 +3,7 @@
 
 #include "game_state.h"
 #include "node.h"
+#include <random>
 #include <unordered_map>
 #include <vector>
 
@@ -14,7 +15,12 @@ private:
   std::unordered_map<InfoSetKey, Node *> node_map;
 
   double cfr(GameState &state, int player_id, double history_prob,
-             int depth = 0);
+             std::mt19937 &gen, int depth = 0);
+
+  // Helper functions for card dealing
+  void deal_random_hole_cards(GameState &state, std::mt19937 &gen);
+  void deal_random_community_cards(GameState &state, int num_cards,
+                                   std::mt19937 &gen);
 
 public:
   explicit Trainer(GameState *game);

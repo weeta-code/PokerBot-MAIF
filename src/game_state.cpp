@@ -1,101 +1,54 @@
 #include "../include/game_state.h"
-#include <chrono>
 #include <iomanip>
 #include <iostream>
 
-// player constructor
+// Player Constructor
 Player::Player(int _id, double _stack, bool _is_human)
     : id(_id), stack(_stack), current_bet(0), is_folded(false),
-      is_all_in(false), is_human(_is_human), times_folded(0), times_raised(0),
-      times_called(0), hands_played(0), has_acted_this_street(false) {
-  // init default profile
-  profile.hands_observed = 0;
-  profile.hands_played = 0;
-  profile.hands_voluntarily_entered = 0;
-  profile.hands_raised_preflop = 0;
-}
+      is_all_in(false), is_human(_is_human), has_acted_this_street(false) {}
 
-// game_state constructor
+// GameState Constructor
 GameState::GameState(RiskProfiler *rp, EquityModule *em)
     : risk_profiler(rp), equity_module(em), pot_size(0),
       current_street_highest_bet(0), num_players(0), dealer_index(0),
-      current_player_index(0), small_blind_pos(0), big_blind_pos(0),
-      small_blind_amount(0), big_blind_amount(0), stage(Stage::START) {}
+      current_player_index(0), small_blind_amount(0), big_blind_amount(0),
+      stage(Stage::START), type(StateType::CHANCE) {}
 
-void GameState::init_deck() {
-  deck.clear();
-  // Rank 0-12, Suit 0-3
-  for (int s = 0; s < 4; s++) {
-    for (int r = 0; r < 13; r++) {
-      deck.emplace_back(static_cast<Rank>(r), static_cast<Suit>(s));
-    }
-  }
-}
-// should work?
-void GameState::shuffle_deck() {
-  unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
-  std::shuffle(deck.begin(), deck.end(), std::default_random_engine(seed));
-}
-
-Card GameState::draw_card() {
-  if (deck.empty()) {
-    // this shouldn't have happened, but just in case if it does again
-    return Card(Rank::TWO, Suit::CLUBS);
-  }
-  Card c = deck.back();
-  deck.pop_back();
-  return c;
-}
-
-void GameState::init_game_setup() {
-  cout << "Poker Engine Initialization \n";
-
-  cout << "Enter Total Players (Including Yourself): ";
-  cin >> num_players;
-  if (num_players < 2) {
-    num_players = 2;
-  }
-
-  // init stack
-  int start_stack;
-  cout << "Enter Starting Stack: ";
-  cin >> start_stack;
+void GameState::init_game_setup(int n_players, double stack_size, double sb,
+                                double bb) {
+  num_players = n_players;
+  small_blind_amount = sb;
+  big_blind_amount = bb;
 
   players.clear();
+  // Player 0 is Human
+  players.emplace_back(0, stack_size, true);
+  if (risk_profiler)
+    risk_profiler->add_player(0, stack_size);
 
-  // init myself
-  players.emplace_back(0, start_stack, true);
-  risk_profiler->add_player(0, start_stack);
-
-  // init others as bots
+  // Others are Bots
   for (int i = 1; i < num_players; i++) {
-    players.emplace_back(i, start_stack, false);
-    risk_profiler->add_player(i, start_stack);
+    players.emplace_back(i, stack_size, false);
+    if (risk_profiler)
+      risk_profiler->add_player(i, stack_size);
   }
 
   dealer_index = 0;
 }
 
 void GameState::start_hand() {
-  // reset round stats
   pot_size = 0;
   current_street_highest_bet = 0;
-  stage = Stage::START;     // Start stage
-  type = StateType::CHANCE; // Initial state is CHANCE (to deal hole cards)
+  stage = Stage::START;
+  type = StateType::CHANCE; // Waiting for cards
   community_cards.clear();
   history.clear();
 
-  // pass "dealer" status down
   dealer_index = (dealer_index + 1) % num_players;
 
-  // clean up deck
-  init_deck();
-  shuffle_deck();
+  if (risk_profiler)
+    risk_profiler->reset_hand();
 
-  // reset for new hands
-  risk_profiler->reset_hand();
-
-  cout << "Starting Hand... (State: CHANCE)\n";
   for (auto &p : players) {
     p.hole_cards.clear();
     p.is_folded = false;
@@ -104,26 +57,39 @@ void GameState::start_hand() {
     p.has_acted_this_street = false;
   }
 
-  // first player assume is to the left of the dealer for simplicity
-  // But actually, for CHANCE state, current_player_index doesn't matter much,
-  // but let's set it to SB for when PLAY starts.
-  // Actually, Preflop starts with UTG (or SB/BB posting).
-  // Let's set it to SB pos for now.
-  current_player_index = (dealer_index + 1) % num_players;
+  // Post Blinds
+  int sb_pos = (dealer_index + 1) % num_players;
+  int bb_pos = (dealer_index + 2) % num_players;
+
+  // SB
+  int sb_paid = min(small_blind_amount, players[sb_pos].stack);
+  players[sb_pos].stack -= sb_paid;
+  players[sb_pos].current_bet = sb_paid;
+  pot_size += sb_paid;
+
+  // BB
+  int bb_paid = min(big_blind_amount, players[bb_pos].stack);
+  players[bb_pos].stack -= bb_paid;
+  players[bb_pos].current_bet = bb_paid;
+  pot_size += bb_paid;
+  current_street_highest_bet = bb_paid;
+
+  // Action starts left of BB
+  current_player_index = (bb_pos + 1) % num_players;
+
+  // Advance to PREFLOP immediately after setup
+  stage = Stage::PREFLOP;
+  type = StateType::PLAY;
 }
 
-void GameState::deal_community_cards() {
-  if (stage == Stage::FLOP) {
-    draw_card();
-    community_cards.push_back(draw_card());
-    community_cards.push_back(draw_card());
-    community_cards.push_back(draw_card());
-  } else if (stage == Stage::TURN) {
-    draw_card();
-    community_cards.push_back(draw_card());
-  } else if (stage == Stage::RIVER) {
-    draw_card();
-    community_cards.push_back(draw_card());
+void GameState::set_community_cards(const std::vector<Card> &cards) {
+  community_cards = cards;
+}
+
+void GameState::set_player_cards(int player_id,
+                                 const std::vector<Card> &cards) {
+  if (player_id >= 0 && player_id < (int)players.size()) {
+    players[player_id].hole_cards = cards;
   }
 }
 
@@ -134,30 +100,8 @@ void GameState::next_street() {
   }
   current_street_highest_bet = 0;
 
-  int active_count = 0;
-  for (const auto &p : players) {
-    if (!p.is_folded && !p.is_all_in) {
-      active_count++;
-    }
-  }
-
-  if (active_count == 0) {
-    stage = Stage::SHOWDOWN;
-    return;
-  }
-
-  current_player_index = (dealer_index + 1) % num_players;
-  int attempts = 0;
-  while ((players[current_player_index].is_folded ||
-          players[current_player_index].is_all_in) &&
-         attempts < num_players) {
-    current_player_index = (current_player_index + 1) % num_players;
-    attempts++;
-  }
-
-  if (stage == Stage::START)
-    stage = Stage::PREFLOP;
-  else if (stage == Stage::PREFLOP)
+  // Advance stage
+  if (stage == Stage::PREFLOP)
     stage = Stage::FLOP;
   else if (stage == Stage::FLOP)
     stage = Stage::TURN;
@@ -166,120 +110,103 @@ void GameState::next_street() {
   else if (stage == Stage::RIVER)
     stage = Stage::SHOWDOWN;
 
-  deal_community_cards();
+  // Reset action to left of dealer (SB)
+  current_player_index = (dealer_index + 1) % num_players;
+
+  // Skip folded/all-in players
+  int attempts = 0;
+  while ((players[current_player_index].is_folded ||
+          players[current_player_index].is_all_in) &&
+         attempts < num_players) {
+    current_player_index = (current_player_index + 1) % num_players;
+    attempts++;
+  }
 }
 
 bool GameState::record_action(int player_idx, Action action) {
-  // HELP: confused, are playerid and playeridx different?
   Player &p = players[player_idx];
-
   history.push_back(action);
   p.has_acted_this_street = true;
 
   if (action.type == ActionType::FOLD) {
     p.is_folded = true;
-    p.times_folded++;
     if (risk_profiler)
       risk_profiler->update_player_profile(p.id, "fold", 0, pot_size);
     return true;
   }
 
+  int amount_added = 0;
   if (action.type == ActionType::CALL) {
-    double call_amount = current_street_highest_bet - p.current_bet;
-    if (call_amount > p.stack)
-      call_amount = p.stack; // all-in call
-
-    p.stack -= call_amount;
-    p.current_bet += call_amount;
-    pot_size += call_amount;
-
-    if (p.stack == 0) {
-      p.is_all_in = true;
-    }
-
-    p.times_called++;
-
-    if (risk_profiler) {
-      risk_profiler->update_stack(p.id, call_amount);
-      risk_profiler->update_player_profile(p.id, "call", call_amount, pot_size);
-    }
-    return true;
-  }
-
-  if (action.type == ActionType::BET) {
-    double actual_bet = action.amount - p.current_bet;
-    if (action.amount > p.stack + p.current_bet) {
-      action.amount = p.stack + p.current_bet;
-      actual_bet = p.stack;
-    }
-
-    p.stack -= actual_bet;
-    p.current_bet = action.amount;
-    pot_size += actual_bet;
-
-    if (p.stack == 0)
-      p.is_all_in = true;
-    current_street_highest_bet = action.amount;
-    p.times_raised++;
-
-    if (risk_profiler) {
-      risk_profiler->update_stack(p.id, actual_bet);
-      risk_profiler->update_player_profile(p.id, "bet", actual_bet, pot_size);
-    }
-    return true;
-  }
-
-  if (action.type == ActionType::RAISE) {
-    double actual_raise = action.amount - p.current_bet;
-    if (action.amount > p.stack + p.current_bet) {
-      action.amount = p.stack + p.current_bet;
-      actual_raise = p.stack;
-    }
-
-    p.stack -= actual_raise;
-    p.current_bet = action.amount;
-    pot_size += actual_raise;
-
-    if (p.stack == 0)
-      p.is_all_in = true;
-    current_street_highest_bet = action.amount;
-    p.times_raised++;
-
-    if (risk_profiler) {
-      risk_profiler->update_stack(p.id, actual_raise);
-      risk_profiler->update_player_profile(p.id, "raise", actual_raise,
+    amount_added = min(p.stack, current_street_highest_bet - p.current_bet);
+    if (risk_profiler)
+      risk_profiler->update_player_profile(p.id, "call", amount_added,
                                            pot_size);
+  } else if (action.type == ActionType::BET ||
+             action.type == ActionType::RAISE) {
+    amount_added = min(p.stack, action.amount - p.current_bet);
+    current_street_highest_bet = action.amount;
+    if (risk_profiler)
+      risk_profiler->update_player_profile(p.id, "raise", amount_added,
+                                           pot_size);
+  } else if (action.type == ActionType::ALLIN) {
+    amount_added = p.stack;
+    if (p.current_bet + amount_added > current_street_highest_bet) {
+      current_street_highest_bet = p.current_bet + amount_added;
     }
+    if (risk_profiler)
+      risk_profiler->update_player_profile(p.id, "allin", amount_added,
+                                           pot_size);
+  } else if (action.type == ActionType::CHECK) {
     return true;
   }
 
-  if (action.type == ActionType::CHECK) {
-    return true;
-  }
+  p.stack -= amount_added;
+  p.current_bet += amount_added;
+  pot_size += amount_added;
 
-  if (action.type == ActionType::ALLIN) {
-    int all_in_amount = p.stack;
-    p.stack = 0;
-    p.current_bet += all_in_amount;
-    pot_size += all_in_amount;
+  if (p.stack == 0)
     p.is_all_in = true;
 
-    if (p.current_bet > current_street_highest_bet)
-      current_street_highest_bet = p.current_bet;
+  return true;
+}
 
-    if (risk_profiler) {
-      risk_profiler->update_stack(p.id, all_in_amount);
-      risk_profiler->update_player_profile(p.id, "allin", all_in_amount,
-                                           pot_size);
+void GameState::apply_action(Action action) {
+  record_action(action.player_id, action);
+  determine_next_state();
+}
+
+void GameState::determine_next_state() {
+  if (is_betting_round_over()) {
+    if (stage == Stage::RIVER) {
+      type = StateType::TERMINAL;
+    } else {
+      // Round over, wait for next street cards (handled by main loop calling
+      // next_street) But for MCCFR flow, we might need to signal this. In
+      // manual mode, main loop controls street transition. So we just stay in
+      // PLAY but effectively waiting. Or we can set a flag. Let's assume main
+      // loop checks is_betting_round_over()
     }
-    return true;
+  } else {
+    next_player();
   }
 
-  return false;
+  if (get_active_player_count() <= 1) {
+    type = StateType::TERMINAL;
+  }
 }
-// utility func for debugging
-Player *GameState::get_current_player() {
-  return &players[current_player_index];
+
+bool GameState::is_betting_round_over() {
+  int active = 0;
+  for (const auto &p : players) {
+    if (!p.is_folded && !p.is_all_in) {
+      active++;
+      if (!p.has_acted_this_street)
+        return false;
+      if (p.current_bet != current_street_highest_bet)
+        return false;
+    }
+  }
+  return true;
 }
 
 void GameState::next_player() {
@@ -292,293 +219,33 @@ void GameState::next_player() {
            attempts <= num_players);
 }
 
-void GameState::apply_chance(const std::vector<Card> &manual_cards) {
-  if (type != StateType::CHANCE)
-    return;
-
-  if (stage == Stage::START) {
-    // Deal Hole Cards
-    // If manual cards provided, use them for the human player (or all if
-    // specified) For now, let's assume manual_cards contains cards for the
-    // human player if provided. But we need to deal to ALL players.
-
-    // If manual_cards is empty, deal random to everyone.
-    // If manual_cards has cards, assign to human, deal random to others.
-
-    // Find human player
-    int human_idx = -1;
-    for (auto &p : players)
-      if (p.is_human)
-        human_idx = p.id;
-
-    for (auto &p : players) {
-      if (p.is_human && !manual_cards.empty() && manual_cards.size() >= 2) {
-        p.hole_cards.push_back(manual_cards[0]);
-        p.hole_cards.push_back(manual_cards[1]);
-      } else {
-        p.hole_cards.push_back(draw_card());
-        p.hole_cards.push_back(draw_card());
-      }
-    }
-
-    stage = Stage::PREFLOP;
-    type = StateType::PLAY;
-
-    // Post blinds
-    int sb_pos = small_blind_pos;
-    int bb_pos = big_blind_pos;
-
-    // SB
-    int sb_paid = min(small_blind_amount, players[sb_pos].stack);
-    players[sb_pos].stack -= sb_paid;
-    players[sb_pos].current_bet = sb_paid;
-    pot_size += sb_paid;
-    if (players[sb_pos].stack == 0)
-      players[sb_pos].is_all_in = true;
-
-    // BB
-    int bb_paid = min(big_blind_amount, players[bb_pos].stack);
-    players[bb_pos].stack -= bb_paid;
-    players[bb_pos].current_bet = bb_paid;
-    pot_size += bb_paid;
-    current_street_highest_bet = bb_paid;
-    if (players[bb_pos].stack == 0)
-      players[bb_pos].is_all_in = true;
-
-    // Reset has_acted for blinds (they act last in preflop usually, or first if
-    // heads up? Standard: BB acts last preflop. SB acts before BB. But preflop
-    // starts left of BB.
-    players[sb_pos].has_acted_this_street = false;
-    players[bb_pos].has_acted_this_street = false;
-
-    // Set current player to left of BB
-    current_player_index = (big_blind_pos + 1) % num_players;
-
-  } else if (stage == Stage::PREFLOP) {
-    // Deal Flop
-    if (!manual_cards.empty() && manual_cards.size() >= 3) {
-      community_cards.push_back(manual_cards[0]);
-      community_cards.push_back(manual_cards[1]);
-      community_cards.push_back(manual_cards[2]);
-    } else {
-      draw_card(); // burn
-      community_cards.push_back(draw_card());
-      community_cards.push_back(draw_card());
-      community_cards.push_back(draw_card());
-    }
-    stage = Stage::FLOP;
-    type = StateType::PLAY;
-    next_street(); // Reset bets
-  } else if (stage == Stage::FLOP) {
-    // Deal Turn
-    if (!manual_cards.empty() && manual_cards.size() >= 1) {
-      community_cards.push_back(manual_cards[0]);
-    } else {
-      draw_card(); // burn
-      community_cards.push_back(draw_card());
-    }
-    stage = Stage::TURN;
-    type = StateType::PLAY;
-    next_street();
-  } else if (stage == Stage::TURN) {
-    // Deal River
-    if (!manual_cards.empty() && manual_cards.size() >= 1) {
-      community_cards.push_back(manual_cards[0]);
-    } else {
-      draw_card(); // burn
-      community_cards.push_back(draw_card());
-    }
-    stage = Stage::RIVER;
-    type = StateType::PLAY;
-    next_street();
-  }
-}
-
-void GameState::determine_next_state() {
-  if (is_betting_round_over()) {
-    if (stage == Stage::RIVER) {
-      type = StateType::TERMINAL;
-    } else {
-      type = StateType::CHANCE;
-      // Don't advance stage here, apply_chance will do it.
-      // But we need to know we are waiting for next street cards.
-    }
-  } else {
-    type = StateType::PLAY;
-    next_player();
-  }
-
-  // Check if only one player left (everyone else folded)
-  int active_count = 0;
-  for (auto &p : players)
+int GameState::get_active_player_count() {
+  int count = 0;
+  for (const auto &p : players)
     if (!p.is_folded)
-      active_count++;
-  if (active_count <= 1) {
-    type = StateType::TERMINAL;
-  }
+      count++;
+  return count;
 }
 
-std::vector<Action> GameState::get_legal_actions() {
-  std::vector<Action> actions;
-  if (is_terminal())
-    return actions;
-
-  Player *p = get_current_player();
-  int call_amt = current_street_highest_bet - p->current_bet;
-
-  actions.emplace_back(p->id, ActionType::FOLD, 0);
-
-  if (call_amt == 0) {
-    actions.emplace_back(p->id, ActionType::CHECK, 0);
-
-    int third_pot = max(10, pot_size / 3);
-    int half_pot = max(10, pot_size / 2);
-    int pot = max(10, pot_size);
-
-    if (p->stack >= third_pot)
-      actions.emplace_back(p->id, ActionType::BET, third_pot);
-    if (p->stack >= half_pot && half_pot != third_pot)
-      actions.emplace_back(p->id, ActionType::BET, half_pot);
-    if (p->stack >= pot && pot != half_pot)
-      actions.emplace_back(p->id, ActionType::BET, pot);
-    if (p->stack > pot)
-      actions.emplace_back(p->id, ActionType::ALLIN, p->stack);
-  } else {
-    if (p->stack > call_amt) {
-      actions.emplace_back(p->id, ActionType::CALL, call_amt);
-
-      int third_pot = max(call_amt + 10, pot_size / 3);
-      int half_pot = max(call_amt + 10, pot_size / 2);
-      int pot = max(call_amt + 10, pot_size);
-
-      if (p->stack >= third_pot)
-        actions.emplace_back(p->id, ActionType::RAISE, third_pot);
-      if (p->stack >= half_pot && half_pot != third_pot)
-        actions.emplace_back(p->id, ActionType::RAISE, half_pot);
-      if (p->stack >= pot && pot != half_pot)
-        actions.emplace_back(p->id, ActionType::RAISE, pot);
-      if (p->stack > pot)
-        actions.emplace_back(p->id, ActionType::ALLIN, p->stack);
-    } else {
-      actions.emplace_back(p->id, ActionType::CALL, p->stack);
-    }
-  }
-  return actions;
+Player *GameState::get_current_player() {
+  return &players[current_player_index];
 }
 
-void GameState::apply_action(Action action) {
-  record_action(action.player_id, action);
-  determine_next_state();
+Player *GameState::get_player(int player_id) {
+  for (auto &p : players)
+    if (p.id == player_id)
+      return &p;
+  return nullptr;
 }
 
 bool GameState::is_terminal() { return type == StateType::TERMINAL; }
 
-// logic loop in main.cpp instead
-// bool GameState::is_betting_round_over() {
-//     // round is over if all active players have matched the highest bet
-//     // or only one player remains
-//     int active = 0;
-//     int matches = 0;
-
-//     for(const auto& p : players) {
-//         if (!p.is_folded && !p.is_all_in) {
-//             active++;
-//             if (p.current_bet == current_street_highest_bet &&
-//             current_street_highest_bet > 0) {
-//                 matches++;
-//             }
-//             // when everyone folds, let's not deal with this please
-//             if (current_street_highest_bet == 0) {
-//                 // technically we should track if everyone fold/raise/etc...
-//                 // but let's assume this can't happen
-//             }
-//         }
-//     }
-//     // everyone else folds
-//     if (get_active_player_count() == 1) {
-//         return true;
-//     }
-
-//     // in poker, need to check two things:
-//     // if bets match
-//     // if all players had a chance to act on last raise
-//     //
-//     return false;
-// }
-
-int GameState::get_active_player_count() {
-  int count = 0;
-  for (const auto &p : players) {
-    if (!p.is_folded)
-      count++;
-  }
-  return count;
-}
-
-void GameState::resolve_winner() {
-  cout << "\nShowdown:\n";
-
-  int best_score = -1;
-  int winner_id = -1;
-
-  for (auto &p : players) {
-    if (p.is_folded)
-      continue;
-
-    std::vector<Card> hand = p.hole_cards;
-    hand.insert(hand.end(), community_cards.begin(), community_cards.end());
-
-    int score = equity_module->evaluate_7_cards(hand);
-
-    if (score > best_score) {
-      best_score = score;
-      winner_id = p.id;
-    }
-  }
-
-  if (winner_id >= 0) {
-    Player *winner = get_player(winner_id);
-    winner->stack += pot_size;
-    cout << "Player " << winner_id << " wins pot of " << pot_size << "!\n";
-    cout << "Final stack: " << winner->stack << "\n";
-  }
-}
-
-Action GameState::get_last_action() { return history.back(); }
-
-Player *GameState::get_player(int player_id) {
-  for (auto &p : players) {
-    if (p.id == player_id)
-      return &p;
-  }
-  return nullptr;
-}
-
-bool GameState::is_betting_round_over() {
-  for (const auto &p : players) {
-    if (!p.is_folded && !p.is_all_in) {
-      cout << "[DEBUG] P" << p.id << " acted=" << p.has_acted_this_street
-           << " bet=" << p.current_bet << " high=" << current_street_highest_bet
-           << "\n";
-      if (!p.has_acted_this_street)
-        return false;
-      if (p.current_bet != current_street_highest_bet)
-        return false;
-    }
-  }
-  return true;
-}
-
-// Removed duplicate definitions of is_terminal and apply_action
-// They are now defined earlier in the file.
-
+// MCCFR Information Set
 string GameState::compute_information_set(int player_id) {
   std::string info;
   Player *p = get_player(player_id);
-
-  if (!p) {
-    return "INVALID_PLAYER";
-  }
+  if (!p)
+    return "INVALID";
 
   street st = PRE;
   if (stage == Stage::FLOP)
@@ -596,19 +263,168 @@ string GameState::compute_information_set(int player_id) {
   info += std::to_string(bucket) + "|";
   info += std::to_string((int)stage) + "|";
 
-  int pot_bucket = pot_size / 50;
-  int stack_bucket = p->stack / 100;
-  info += std::to_string(pot_bucket) + "|";
+  // ABSTRACTION: Normalize to big blinds
+  double bb = big_blind_amount;
+  if (bb <= 0)
+    bb = 1.0; // Safety check
+
+  // Abstract stack size to buckets
+  double stack_bb = p->stack / bb;
+  int stack_bucket = abstract_stack_size(stack_bb);
   info += std::to_string(stack_bucket) + "|";
 
-  for (auto &a : history) {
-    info +=
-        std::to_string(a.player_id) + ":" + std::to_string((int)a.type) + ";";
-  }
+  // Abstract pot size to buckets
+  double pot_bb = pot_size / bb;
+  int pot_bucket = abstract_pot_size(pot_bb);
+  info += std::to_string(pot_bucket) + "|";
 
-  // Append number of legal actions to prevent collisions
+  // Abstract action history with bet sizing
+  info += abstract_action_history() + "|";
+
   std::vector<Action> legal = get_legal_actions();
-  info += "|" + std::to_string(legal.size());
+  info += std::to_string(legal.size());
 
   return info;
+}
+
+// Abstract stack into buckets based on big blinds
+int GameState::abstract_stack_size(double stack_bb) const {
+  if (stack_bb < 10)
+    return 0; // Short stack
+  if (stack_bb < 25)
+    return 1; // Medium-short
+  if (stack_bb < 50)
+    return 2; // Medium
+  if (stack_bb < 100)
+    return 3; // Medium-deep
+  return 4;   // Deep stack
+}
+
+// Abstract pot into buckets
+int GameState::abstract_pot_size(double pot_bb) const {
+  if (pot_bb < 5)
+    return 0; // Small pot
+  if (pot_bb < 15)
+    return 1; // Medium pot
+  if (pot_bb < 30)
+    return 2; // Large pot
+  if (pot_bb < 60)
+    return 3; // Very large pot
+  return 4;   // Huge pot
+}
+
+// Abstract bet size relative to pot
+std::string GameState::abstract_bet_size(double bet_amount) const {
+  if (pot_size <= 0)
+    return "S"; // If no pot, default to small
+
+  double pot_fraction = bet_amount / pot_size;
+
+  if (pot_fraction < 0.4)
+    return "S"; // Small (< 1/3 pot)
+  if (pot_fraction < 0.75)
+    return "M"; // Medium (1/2 pot)
+  if (pot_fraction < 1.5)
+    return "P"; // Pot-sized
+  if (pot_fraction < 2.5)
+    return "L"; // Large (2x pot)
+  return "A";   // All-in / Overbet
+}
+
+// Simplify action history with abstracted bet sizes and RELATIVE positions
+std::string GameState::abstract_action_history() const {
+  std::string result;
+  for (const auto &action : history) {
+    // Calculate relative position: (action_player - dealer + num_players) %
+    // num_players This makes 0=Dealer, 1=SB, 2=BB, etc. regardless of absolute
+    // ID
+    int relative_pos =
+        (action.player_id - dealer_index + num_players) % num_players;
+
+    result += std::to_string(relative_pos);
+
+    switch (action.type) {
+    case ActionType::FOLD:
+      result += "F";
+      break;
+    case ActionType::CHECK:
+      result += "X";
+      break;
+    case ActionType::CALL:
+      result += "C";
+      break;
+    case ActionType::BET:
+    case ActionType::RAISE:
+      result += "R" + abstract_bet_size(action.amount);
+      break;
+    case ActionType::ALLIN:
+      result += "A";
+      break;
+    }
+  }
+  return result.empty() ? "_" : result;
+}
+
+std::vector<Action> GameState::get_legal_actions() {
+  std::vector<Action> actions;
+  if (is_terminal())
+    return actions;
+
+  Player *p = get_current_player();
+  int call_amt = current_street_highest_bet - p->current_bet;
+
+  actions.emplace_back(p->id, ActionType::FOLD, 0);
+
+  if (call_amt == 0) {
+    actions.emplace_back(p->id, ActionType::CHECK, 0);
+    // Simplified betting sizes for MCCFR
+    double pot = std::max(10.0, pot_size);
+    if (p->stack >= pot / 2.0)
+      actions.emplace_back(p->id, ActionType::BET, pot / 2.0);
+    if (p->stack >= pot)
+      actions.emplace_back(p->id, ActionType::BET, pot);
+    actions.emplace_back(p->id, ActionType::ALLIN, p->stack);
+  } else {
+    if (p->stack > call_amt) {
+      actions.emplace_back(p->id, ActionType::CALL, call_amt);
+      double pot = std::max(call_amt + 10.0, pot_size);
+      if (p->stack >= pot)
+        actions.emplace_back(p->id, ActionType::RAISE, pot);
+      actions.emplace_back(p->id, ActionType::ALLIN, p->stack);
+    } else {
+      actions.emplace_back(p->id, ActionType::CALL, p->stack);
+    }
+  }
+  return actions;
+}
+
+void GameState::resolve_winner() {
+  // Manual resolution or simple equity check
+  // For now, simple equity check if we have cards
+  int winner_id = -1;
+  int best_score = -1;
+
+  for (auto &p : players) {
+    if (p.is_folded)
+      continue;
+
+    // If we don't have opponent cards (manual mode), we can't determine winner
+    // automatically unless we ask user. For now, let's just print "Showdown"
+    if (p.hole_cards.empty())
+      continue;
+
+    std::vector<Card> hand = p.hole_cards;
+    hand.insert(hand.end(), community_cards.begin(), community_cards.end());
+    int score = equity_module->evaluate_7_cards(hand);
+    if (score > best_score) {
+      best_score = score;
+      winner_id = p.id;
+    }
+  }
+
+  if (winner_id != -1) {
+    cout << "Winner determined by cards: Player " << winner_id << "\n";
+  } else {
+    cout << "Showdown! (Enter winner manually in next version)\n";
+  }
 }

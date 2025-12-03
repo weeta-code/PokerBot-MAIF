@@ -1,17 +1,80 @@
 #include "../../include/mccfr/trainer.h"
+#include <algorithm>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <random>
 #include <set>
 
-static const int MAX_CFR_DEPTH = 50;
+// Removed depth limit - let CFR explore freely
+// static const int MAX_CFR_DEPTH = 50;
 
 Trainer::Trainer(GameState *g) : game(g) {}
 
 Trainer::~Trainer() {
   for (auto &itr : node_map) {
     delete itr.second;
+  }
+}
+
+// Helper function to deal random hole cards
+void Trainer::deal_random_hole_cards(GameState &state, std::mt19937 &gen) {
+  // Create a full deck
+  std::vector<Card> deck;
+  for (int r = 0; r < 13; ++r) {
+    for (int s = 0; s < 4; ++s) {
+      deck.emplace_back(static_cast<Rank>(r), static_cast<Suit>(s));
+    }
+  }
+
+  // Shuffle the deck
+  std::shuffle(deck.begin(), deck.end(), gen);
+
+  // Deal 2 cards to each player
+  int card_idx = 0;
+  for (auto &player : state.players) {
+    player.hole_cards.clear();
+    player.hole_cards.push_back(deck[card_idx++]);
+    player.hole_cards.push_back(deck[card_idx++]);
+  }
+}
+
+// Helper function to deal random community cards
+void Trainer::deal_random_community_cards(GameState &state, int num_cards,
+                                          std::mt19937 &gen) {
+  // Create a full deck
+  std::vector<Card> deck;
+  for (int r = 0; r < 13; ++r) {
+    for (int s = 0; s < 4; ++s) {
+      deck.emplace_back(static_cast<Rank>(r), static_cast<Suit>(s));
+    }
+  }
+
+  // Remove already dealt cards (player hole cards + existing community cards)
+  auto is_dealt = [&](const Card &c) {
+    // Check player cards
+    for (const auto &p : state.players) {
+      for (const auto &pc : p.hole_cards) {
+        if (pc.rank == c.rank && pc.suit == c.suit)
+          return true;
+      }
+    }
+    // Check existing community cards
+    for (const auto &cc : state.community_cards) {
+      if (cc.rank == c.rank && cc.suit == c.suit)
+        return true;
+    }
+    return false;
+  };
+
+  deck.erase(std::remove_if(deck.begin(), deck.end(), is_dealt), deck.end());
+
+  // Shuffle remaining deck
+  std::shuffle(deck.begin(), deck.end(), gen);
+
+  // Deal the specified number of cards
+  for (int i = 0; i < num_cards && i < (int)deck.size(); ++i) {
+    state.community_cards.push_back(deck[i]);
   }
 }
 
@@ -23,8 +86,9 @@ void Trainer::train(int iterations, int num_players) {
   std::random_device rd;
   std::mt19937 gen(rd());
 
-  game->small_blind_amount = 10;
-  game->big_blind_amount = 20;
+  // Configuration options for sampling
+  std::vector<int> player_counts = {2, 3, 4, 5, 6};
+  std::vector<double> stack_bb_options = {10, 25, 50, 100, 200};
 
   for (int i = 0; i < iterations; ++i) {
 
@@ -34,113 +98,96 @@ void Trainer::train(int iterations, int num_players) {
                 << node_map.size() << " nodes\n";
     }
 
-    // Use configurable num_players instead of hardcoded 2
-    game->num_players = num_players;
-    game->dealer_index = 0;
-    game->players.clear();
-    for (int p = 0; p < num_players; ++p) {
-      game->players.emplace_back(p, 1000, false);
-    }
+    // Randomly sample configuration
+    int sampled_players = player_counts[gen() % player_counts.size()];
+    double stack_bb = stack_bb_options[gen() % stack_bb_options.size()];
 
-    game->start_hand();
-
-    // Blind positions: for heads-up (2 players), dealer is SB
-    // For 3+, SB is to dealer's left, BB is 2 left of dealer
-    int sb_pos, bb_pos;
-    if (num_players == 2) {
-      sb_pos = game->dealer_index;                     // Heads-up: dealer is SB
-      bb_pos = (game->dealer_index + 1) % num_players; // Other player is BB
-    } else {
-      sb_pos = (game->dealer_index + 1) %
-               num_players; // Multi-way: SB left of dealer
-      bb_pos = (game->dealer_index + 2) % num_players; // BB 2 left of dealer
-    }
-
-    game->players[sb_pos].stack -= game->small_blind_amount;
-    game->players[sb_pos].current_bet = game->small_blind_amount;
-    game->pot_size += game->small_blind_amount;
-
-    game->players[bb_pos].stack -= game->big_blind_amount;
-    game->players[bb_pos].current_bet = game->big_blind_amount;
-    game->pot_size += game->big_blind_amount;
-    game->current_street_highest_bet = game->big_blind_amount;
-
-    // First to act preflop is left of BB (UTG in multi-way, SB in heads-up
-    // after blinds posted)
-    game->current_player_index = (bb_pos + 1) % num_players;
+    // Fixed blinds (abstraction normalizes anyway)
+    double bb = 2.0;
+    double sb = 1.0;
+    double stack = stack_bb * bb;
 
     // External sampling: traverse from each player's perspective
-    for (int p = 0; p < num_players; ++p) {
-      GameState sim_state = *game;
-      sim_state.risk_profiler = nullptr;
-      sim_state.equity_module = game->equity_module;
-      cfr(sim_state, p, 1.0);
+    for (int p = 0; p < sampled_players; ++p) {
+      // Create fresh initial state for each traversal
+      GameState fresh_state(nullptr, game->equity_module);
+      fresh_state.num_players = sampled_players;
+      fresh_state.small_blind_amount = sb;
+      fresh_state.big_blind_amount = bb;
+      fresh_state.dealer_index = 0;
+
+      // Initialize players
+      fresh_state.players.clear();
+      for (int pid = 0; pid < sampled_players; ++pid) {
+        fresh_state.players.emplace_back(pid, stack, false);
+      }
+
+      fresh_state.start_hand();
+
+      // Deal random hole cards for all players
+      deal_random_hole_cards(fresh_state, gen);
+
+      // Traverse the game tree from this player's perspective
+      cfr(fresh_state, p, 1.0, gen);
     }
   }
   std::cout << "Training complete: " << iterations << " iterations\n";
 }
 
 double Trainer::cfr(GameState &state, int player_id, double history_prob,
-                    int depth) {
-  static int terminal_count = 0;
-  static int info_set_call_count = 0;
-  static int cfr_call_count = 0;
-  static std::set<std::string> unique_info_sets;
+                    std::mt19937 &gen, int depth) {
+  // Removed depth limit to allow full tree exploration
 
-  cfr_call_count++;
-
-  if (depth > MAX_CFR_DEPTH) {
-    return 0.0;
-  }
-
+  // Terminal state: return utility
   if (state.is_terminal()) {
-    terminal_count++;
     Player *p = state.get_player(player_id);
     if (!p)
       return 0.0;
-
     double utility = p->stack - 1000.0;
     return utility;
   }
 
+  // Handle betting round transitions
   if (state.is_betting_round_over() && state.stage != Stage::SHOWDOWN) {
-    state.next_street();
+    // Check if we need to deal cards (chance node)
+    if (state.stage == Stage::PREFLOP && state.community_cards.empty()) {
+      // Deal flop (3 cards)
+      deal_random_community_cards(state, 3, gen);
+      state.stage = Stage::FLOP;
+      state.next_street();
+    } else if (state.stage == Stage::FLOP &&
+               state.community_cards.size() == 3) {
+      // Deal turn (1 card)
+      deal_random_community_cards(state, 1, gen);
+      state.stage = Stage::TURN;
+      state.next_street();
+    } else if (state.stage == Stage::TURN &&
+               state.community_cards.size() == 4) {
+      // Deal river (1 card)
+      deal_random_community_cards(state, 1, gen);
+      state.stage = Stage::RIVER;
+      state.next_street();
+    } else {
+      state.next_street();
+    }
   }
 
+  // Check terminal again after street transition
   if (state.is_terminal()) {
-    terminal_count++;
     Player *p = state.get_player(player_id);
     if (!p)
       return 0.0;
-
     double utility = p->stack - 1000.0;
     return utility;
-  }
-
-  if (cfr_call_count <= 5) {
-    std::cout << "CFR call #" << cfr_call_count
-              << ": Getting current player...\n";
-    std::cout << "  current_player_index=" << state.current_player_index
-              << ", num_players=" << state.num_players << "\n";
   }
 
   Player *curr_player = state.get_current_player();
-
   if (!curr_player) {
     return 0.0;
   }
 
   std::string info_set = state.compute_information_set(curr_player->id);
   std::vector<Action> legal_actions = state.get_legal_actions();
-
-  info_set_call_count++;
-  unique_info_sets.insert(info_set);
-
-  if (info_set_call_count % 10000 == 0) {
-    std::cout << "After " << info_set_call_count
-              << " CFR calls: " << unique_info_sets.size()
-              << " unique info sets, " << node_map.size() << " nodes in map\n";
-  }
 
   if (legal_actions.empty())
     return 0.0;
@@ -151,9 +198,6 @@ double Trainer::cfr(GameState &state, int player_id, double history_prob,
   Node *node = node_map[info_set];
 
   // External Sampling: Update strategy sum only for the traverser (player_id)
-  // The weight is 1.0 because in External Sampling, the traverser's reach prob
-  // is 1.0 (we force all actions) and opponent reach prob is accounted for by
-  // sampling.
   double weight = (curr_player->id == player_id) ? 1.0 : 0.0;
   std::vector<double> strategy = node->get_strategy(weight);
 
@@ -175,7 +219,7 @@ double Trainer::cfr(GameState &state, int player_id, double history_prob,
       GameState next_state = state;
       next_state.apply_action(legal_actions[i]);
 
-      utils[i] = cfr(next_state, player_id, history_prob, depth + 1);
+      utils[i] = cfr(next_state, player_id, history_prob, gen, depth + 1);
       node_util += strategy[i] * utils[i];
     }
 
@@ -188,15 +232,13 @@ double Trainer::cfr(GameState &state, int player_id, double history_prob,
     return node_util;
   } else {
     // Opponent: Sample ONE action
-    std::random_device rd;
-    std::mt19937 gen(rd());
     std::discrete_distribution<> dist(strategy.begin(), strategy.end());
     int sampled = dist(gen);
 
     GameState next_state = state;
     next_state.apply_action(legal_actions[sampled]);
 
-    return cfr(next_state, player_id, history_prob, depth + 1);
+    return cfr(next_state, player_id, history_prob, gen, depth + 1);
   }
 }
 
@@ -212,18 +254,6 @@ Action Trainer::get_action_recommendation(GameState &state, int player_id,
   std::string info_set = state.compute_information_set(player_id);
   std::vector<Action> legal_actions = state.get_legal_actions();
 
-  static int recommendation_count = 0;
-  recommendation_count++;
-
-  if (recommendation_count <= 5) {
-    std::cout << "[DEBUG] Recommendation #" << recommendation_count << "\n";
-    std::cout << "  Info set: \"" << info_set << "\"\n";
-    std::cout << "  Found in model: "
-              << (node_map.find(info_set) != node_map.end() ? "YES" : "NO")
-              << "\n";
-    std::cout << "  Model size: " << node_map.size() << " nodes\n";
-  }
-
   if (legal_actions.empty()) {
     probabilities.clear();
     return Action(-1, ActionType::FOLD, 0);
@@ -232,9 +262,6 @@ Action Trainer::get_action_recommendation(GameState &state, int player_id,
   probabilities = get_strategy(info_set);
 
   if (probabilities.empty()) {
-    if (recommendation_count <= 5) {
-      std::cout << "  Strategy empty - using uniform\n";
-    }
     probabilities.resize(legal_actions.size(), 1.0 / legal_actions.size());
   }
 
@@ -263,11 +290,12 @@ void Trainer::save_to_file(const std::string &filename) {
     out.write(reinterpret_cast<const char *>(&key_len), sizeof(key_len));
     out.write(key.c_str(), key_len);
 
-    std::vector<double> avg_strat = node->get_average_strategy();
-    size_t num_actions = avg_strat.size();
+    // CRITICAL FIX: Save RAW strategy_sum, not normalized average
+    std::vector<double> strat_sum = node->get_strategy_sum();
+    size_t num_actions = strat_sum.size();
     out.write(reinterpret_cast<const char *>(&num_actions),
               sizeof(num_actions));
-    out.write(reinterpret_cast<const char *>(avg_strat.data()),
+    out.write(reinterpret_cast<const char *>(strat_sum.data()),
               num_actions * sizeof(double));
   }
 
@@ -300,11 +328,13 @@ void Trainer::load_from_file(const std::string &filename) {
     size_t num_actions;
     in.read(reinterpret_cast<char *>(&num_actions), sizeof(num_actions));
 
-    std::vector<double> avg_strat(num_actions);
-    in.read(reinterpret_cast<char *>(avg_strat.data()),
+    std::vector<double> strat_sum(num_actions);
+    in.read(reinterpret_cast<char *>(strat_sum.data()),
             num_actions * sizeof(double));
 
+    // Create node and restore the RAW strategy_sum
     Node *node = new Node(num_actions);
+    node->set_strategy_sum(strat_sum);
     node_map[key] = node;
   }
 

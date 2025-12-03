@@ -40,6 +40,12 @@ std::vector<double> Node::get_average_strategy() {
   return avg_strategy;
 }
 
+std::vector<double> Node::get_strategy_sum() const { return strategy_sum; }
+
 void Node::update_regret_sum(int action, double regret) {
   regret_sum[action] += regret;
+}
+
+void Node::set_strategy_sum(const std::vector<double> &strat_sum) {
+  strategy_sum = strat_sum;
 }

@@ -17,8 +17,11 @@ public:
 
   std::vector<double> get_strategy(double realization_weight);
   std::vector<double> get_average_strategy();
+  std::vector<double>
+  get_strategy_sum() const; // NEW: getter for raw strategy_sum
 
   void update_regret_sum(int action, double regret);
+  void set_strategy_sum(const std::vector<double> &strat_sum);
 };
 
 #endif

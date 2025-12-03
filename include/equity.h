@@ -55,37 +55,22 @@ enum BucketID {
   NUTS = 9
 };
 
-struct EquitySummary {
-  int hero_bucket;
-  double equity;
-  double baseline;
-};
-
 enum street { PRE, FLOP, TURN, RIVER };
 
 class EquityModule {
 public:
-  EquitySummary
-  summarize_state(const std::vector<Card> &hero_hole_cards,
-                  const std::vector<Card> &board_cards,
-                  const std::vector<double> &villain_bucket_distribution,
-                  double pot_size, street street);
-
-  void enable_cache();
-  void clear_cache();
-
+  // Core bucketization for MCCFR
   int bucketize_hand(const std::vector<Card> &hero_hand,
                      const std::vector<Card> &board_cards, street street);
 
+  // Hand evaluation helper
   int evaluate_7_cards(const std::vector<Card> &cards);
 
+  // New: Display-focused equity calculation (Monte Carlo)
+  double calculate_display_equity(const std::vector<Card> &hero_hand,
+                                  const std::vector<Card> &board_cards);
+
 private:
-
-  double compute_equity_vs_range(
-      int hero_bucket, const std::vector<double> &villain_bucket_distribution);
-
-  double compute_baseline_value(double equity, double pot_size);
-
   int evaluate_5_cards(const std::vector<Card> &cards);
 };
 

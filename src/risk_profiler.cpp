@@ -1,25 +1,20 @@
 #include "../include/risk_profiler.h"
+#include <iomanip>
 #include <iostream>
-#include <numeric>
+#include <sstream>
 
-RiskProfiler::RiskProfiler(double /*risk_tolerance*/) {
+RiskProfiler::RiskProfiler() {
   // Constructor
 }
 
 void RiskProfiler::add_player(int player_id, double initial_stack) {
   PlayerProfile profile;
-  profile.hands_observed = 0;
   profile.hands_played = 0;
   profile.hands_voluntarily_entered = 0;
   profile.hands_raised_preflop = 0;
   profile.total_bets = 0;
   profile.total_calls = 0;
-
   profile.stack_size = initial_stack;
-  profile.total_wagered = 0;
-  profile.current_bet_ratio = 0;
-
-  profile.profile_label = ProfileLabel::PROFILE_RISK_NEUTRAL;
 
   player_profiles[player_id] = profile;
 }
@@ -36,57 +31,22 @@ void RiskProfiler::update_player_profile(int player_id,
   // Update stack
   if (bet_amount > 0) {
     profile.stack_size -= bet_amount;
-    profile.total_wagered += bet_amount;
   }
 
   // Update stats
-  if (action == "bet" || action == "raise") {
+  if (action == "bet" || action == "raise" || action == "allin") {
     profile.total_bets++;
-    if (profile.hands_observed >
-        0) { // Assuming preflop logic handled elsewhere or simplified
-             // In real system, check street
-    }
+    // Note: In a real system we'd check street for PFR/VPIP more carefully
+    // For now, we rely on the caller to update hands_voluntarily_entered etc.
   } else if (action == "call") {
     profile.total_calls++;
   }
-
-  update_profile_label(player_id);
 }
 
 void RiskProfiler::update_stack(int player_id, double amount) {
   if (player_profiles.find(player_id) != player_profiles.end()) {
     player_profiles[player_id].stack_size = amount;
   }
-}
-
-double RiskProfiler::calculate_risk_score(
-    int player_id, const std::string & /*action*/, double bet_amount,
-    double /*pot_size*/, double /*adjusted_win_probability*/) const {
-
-  if (player_profiles.find(player_id) == player_profiles.end())
-    return 0.5;
-
-  const PlayerProfile &profile = player_profiles.at(player_id);
-
-  // Risk score based on % of stack wagered and aggression
-  double stack_risk = 0.0;
-  double initial = profile.stack_size + profile.total_wagered; // Approx
-  if (initial > 0) {
-    stack_risk = (bet_amount + profile.total_wagered) / initial;
-  }
-
-  // Adjust by profile
-  double multiplier = 1.0;
-  if (profile.profile_label == PROFILE_RISK_PRONE)
-    multiplier = 1.2;
-  if (profile.profile_label == PROFILE_RISK_AVERSE)
-    multiplier = 0.8;
-
-  double score = stack_risk * multiplier;
-  if (score > 1.0)
-    score = 1.0;
-
-  return score;
 }
 
 PlayerProfile RiskProfiler::get_player_profile(int player_id) const {
@@ -98,26 +58,33 @@ PlayerProfile RiskProfiler::get_player_profile(int player_id) const {
 
 void RiskProfiler::reset_hand() {
   for (auto &[id, profile] : player_profiles) {
-    profile.total_wagered = 0;
-    profile.current_bet_ratio = 0;
     profile.hands_played++;
   }
 }
 
-void RiskProfiler::update_profile_label(int player_id) {
-  PlayerProfile &profile = player_profiles[player_id];
+std::string RiskProfiler::get_formatted_stats(int player_id) const {
+  if (player_profiles.find(player_id) == player_profiles.end())
+    return "N/A";
 
-  double af = 0;
-  if (profile.total_calls > 0) {
-    af = (double)profile.total_bets / profile.total_calls;
-  } else if (profile.total_bets > 0) {
-    af = 10.0; // High aggression
+  const auto &p = player_profiles.at(player_id);
+
+  double vpip = 0.0;
+  double pfr = 0.0;
+  double af = 0.0;
+
+  if (p.hands_played > 0) {
+    vpip = (double)p.hands_voluntarily_entered / p.hands_played * 100.0;
+    pfr = (double)p.hands_raised_preflop / p.hands_played * 100.0;
   }
 
-  if (af > 2.0)
-    profile.profile_label = PROFILE_RISK_PRONE;
-  else if (af < 1.0)
-    profile.profile_label = PROFILE_RISK_AVERSE;
-  else
-    profile.profile_label = PROFILE_RISK_NEUTRAL;
+  if (p.total_calls > 0) {
+    af = (double)p.total_bets / p.total_calls;
+  } else if (p.total_bets > 0) {
+    af = 10.0; // Cap at 10
+  }
+
+  std::stringstream ss;
+  ss << std::fixed << std::setprecision(1);
+  ss << "VPIP: " << vpip << "% | PFR: " << pfr << "% | AF: " << af;
+  return ss.str();
 }

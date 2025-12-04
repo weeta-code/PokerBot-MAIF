@@ -219,7 +219,7 @@ double Trainer::cfr(GameState &state, int player_id, double history_prob,
       GameState next_state = state;
       next_state.apply_action(legal_actions[i]);
 
-      utils[i] = cfr(next_state, player_id, history_prob, gen, depth + 1);
+      utils[i] = cfr(next_state, player_id, history_prob * strategy[i], gen, depth + 1);
       node_util += strategy[i] * utils[i];
     }
 
@@ -228,7 +228,6 @@ double Trainer::cfr(GameState &state, int player_id, double history_prob,
       double regret = utils[i] - node_util;
       node->update_regret_sum(i, regret);
     }
-
     return node_util;
   } else {
     // Opponent: Sample ONE action
@@ -238,7 +237,7 @@ double Trainer::cfr(GameState &state, int player_id, double history_prob,
     GameState next_state = state;
     next_state.apply_action(legal_actions[sampled]);
 
-    return cfr(next_state, player_id, history_prob, gen, depth + 1);
+    return cfr(next_state, player_id, history_prob * strategy[sampled], gen, depth + 1);
   }
 }
 

@@ -180,17 +180,18 @@ void solver_mode(Trainer &trainer) {
       // MCCFR Recommendation (for Hero)
       if (p->is_human) {
         std::vector<double> probs;
-        trainer.get_action_recommendation(game, p->id, probs);
+        Action best = trainer.get_action_recommendation(game, p->id, probs);
         std::vector<Action> legal = game.get_legal_actions();
 
         cout << "\n*** Solver Recommendation ***\n";
         if (!probs.empty()) {
-          int max_idx = 0;
-          for (size_t i = 1; i < probs.size(); ++i) {
-            if (probs[i] > probs[max_idx])
-              max_idx = i;
-          }
-          Action best = legal[max_idx];
+  
+          // int max_idx = 0;
+          // for (size_t i = 1; i < probs.size(); ++i) {
+          //   if (probs[i] > probs[max_idx])
+          //     max_idx = i;
+          // }
+          // Action best = legal[max_idx];
 
           cout << "Best Action: ";
           switch (best.type) {
@@ -216,8 +217,8 @@ void solver_mode(Trainer &trainer) {
                  << best.amount;
             break;
           }
-          cout << " (" << std::fixed << std::setprecision(1)
-               << probs[max_idx] * 100 << "%)\n";
+          // cout << " (" << std::fixed << std::setprecision(1)
+          //      << probs[max_idx] * 100 << "%)\n";
         } else {
           cout << "No recommendation available (Unexplored state)\n";
         }

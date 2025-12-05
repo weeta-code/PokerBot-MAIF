@@ -141,7 +141,7 @@ std::vector<double> Trainer::calculate_payoffs(GameState &state) {
   for (int i = 0; i < state.num_players; ++i) {
     Player* p = state.get_player(i);
     if (p->is_folded) {
-        ranks[i] = -pot;
+        ranks[i] = -state.get_player(i)->current_bet;
     }
 
     std::vector<Card> hand;
@@ -180,7 +180,7 @@ double Trainer::cfr(GameState &state, int player_id, double history_prob,
     Player *p = state.get_player(player_id);
     if (!p)
       return 0.0;
-    get_terminal_payoff(state, player_id);
+    return get_terminal_payoff(state, player_id);
     // double utility = p->stack - 1000.0;
     /// return utility;
   }
@@ -215,7 +215,7 @@ double Trainer::cfr(GameState &state, int player_id, double history_prob,
     Player *p = state.get_player(player_id);
     if (!p)
       return 0.0;
-    get_terminal_payoff(state, player_id);
+    return get_terminal_payoff(state, player_id);
     // double utility = p->stack - 1000.0;
     // return utility;
   }

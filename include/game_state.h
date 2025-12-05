@@ -11,8 +11,6 @@
 
 using namespace std;
 
-enum class PlayMode { AUTONOMOUS, GUIDED };
-
 enum class Stage {
   START,
   PREFLOP,
@@ -22,91 +20,94 @@ enum class Stage {
   SHOWDOWN,
 };
 
-enum class ActionType {
-    FOLD,
-    CHECK,
-    CALL,
-    BET,    
-    RAISE,   
-    ALLIN
-};
+enum class ActionType { FOLD, CHECK, CALL, BET, RAISE, ALLIN };
 
-// defining a comprehensive player profile
+// Minimal player struct for MCCFR
 struct Player {
-  string id;
+  int id;
   vector<Card> hole_cards;
-  int stack;
-  int current_bet; // amount to bet in the current street
+  double stack;
+  double current_bet; // amount to bet in the current street
   bool is_folded;
   bool is_all_in;
   bool is_human;
 
-  // useful stats for risk profiling
-  int times_folded;
-  int times_raised;
-  int times_called;
-  int hands_played;
+  bool has_acted_this_street;
 
-  PlayerProfile profile;
-
-  Player(string _id, double _stack, bool _is_human);
+  Player(int _id, double _stack, bool _is_human);
 };
 
 struct Action {
-    Player player;
-    ActionType type;
-    int amount; 
+  int player_id;
+  ActionType type;
+  double amount;
 
-    Action(Player p, ActionType t, int amt = 0)
-        : player(p), type(t), amount(amt) {}
+  Action(int pid, ActionType t, double amt = 0)
+      : player_id(pid), type(t), amount(amt) {}
 };
+
+enum class StateType { CHANCE, PLAY, TERMINAL };
 
 struct GameState {
   vector<Player> players;
-  vector<Card> deck;
-  vector<Card> community_cards;
+  vector<Card> community_cards; // Manual input
 
-  PlayMode play_mode;
-  Stage stage;
   std::vector<Action> history;
-  int pot_size;
-  int current_street_highest_bet;
+
+  // Modules
+  RiskProfiler *risk_profiler;
+  EquityModule *equity_module;
+
+  double pot_size;
+  double current_street_highest_bet;
 
   int num_players;
   int dealer_index;
   int current_player_index;
 
-  // incapsulate other modules to external engines
-  RiskProfiler *risk_profiler;
-  EquityModule *equity_module;
+  double small_blind_amount;
+  double big_blind_amount;
+
+  Stage stage;
+  StateType type;
 
   GameState(RiskProfiler *rp, EquityModule *em);
 
-  // init funcs
-  void init_game_setup();
-  void init_deck();
-  void shuffle_deck();
-
-  // step by step in a street
+  // Init
+  void init_game_setup(int n_players, double stack_size, double sb, double bb);
   void start_hand();
-  void deal_community_cards(); // for flop/turn/river
+
+  // Manual Input Methods
+  void set_community_cards(const std::vector<Card> &cards);
+  void set_player_cards(int player_id, const std::vector<Card> &cards);
+
+  // Flow
   void next_street();
-  void resolve_winner();
+  void resolve_winner(); // Manual winner resolution or simple equity calc
   bool is_hand_over();
   bool is_betting_round_over();
 
-  // action func
-  Card draw_card();
-  // returns true if action is valid
+  // Actions
   bool record_action(int player_idx, Action action);
+  std::vector<Action> get_legal_actions();
+  void apply_action(Action action);
 
-  // helper funcs
+  // MCCFR Support
+  bool is_terminal();
+  string compute_information_set(int player_id);
+  Player *get_player(int player_id);
+
+  // Abstraction Helpers
+  int abstract_stack_size(double stack_bb) const;
+  int abstract_pot_size(double pot_bb) const;
+  std::string abstract_bet_size(double bet_amount) const;
+  std::string abstract_action_history() const;
+
+  // Helpers
   int get_active_player_count();
   Player *get_current_player();
   void next_player();
-
-  // helper functions kat
-  Action get_last_action();
+  void determine_next_state();
 };
 
 #endif

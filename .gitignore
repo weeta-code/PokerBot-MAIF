@@ -3,3 +3,8 @@
 *.dylib
 build/
 .DS_Store
+*.md
+*.sh
+*.lldb
+*.gz
+.claude/

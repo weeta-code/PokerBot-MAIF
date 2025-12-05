@@ -6,12 +6,16 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 project(PokerBotMAIF VERSION 1.0 LANGUAGES CXX)
 
 include_directories(${PROJECT_SOURCE_DIR}/include)
+include_directories(${PROJECT_SOURCE_DIR}/include/mccfr)
 
 # src files
 set(SOURCES
     src/main.cpp
-    src/odds_calculator.cpp
+    src/equity.cpp
     src/risk_profiler.cpp
+    src/game_state.cpp
+    src/mccfr/trainer.cpp
+    src/mccfr/node.cpp
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})

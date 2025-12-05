@@ -107,9 +107,7 @@ void Trainer::train(int iterations, int num_players) {
     double sb = 1.0;
     double stack = stack_bb * bb;
 
-    // External sampling: traverse from each player's perspective
-    for (int p = 0; p < sampled_players; ++p) {
-      // Create fresh initial state for each traversal
+    // Create fresh initial state for each traversal
       GameState fresh_state(nullptr, game->equity_module);
       fresh_state.num_players = sampled_players;
       fresh_state.small_blind_amount = sb;
@@ -126,6 +124,10 @@ void Trainer::train(int iterations, int num_players) {
 
       // Deal random hole cards for all players
       deal_random_hole_cards(fresh_state, gen);
+
+    // External sampling: traverse from each player's perspective
+    for (int p = 0; p < sampled_players; ++p) {
+      
 
       // Traverse the game tree from this player's perspective
       std::vector<double> pi(sampled_players, 1.0);
@@ -298,7 +300,7 @@ double Trainer::cfr(GameState &state, int player_id, std::vector<double> &pi, do
     GameState next_state = state;
     next_state.apply_action(legal_actions[sampled]);
 
-    double res = cfr(next_state, player_id, pi, chance_prob, gen, depth + 1);
+    double res = cfr(next_state, player_id, pi, chance_prob * strategy[sampled], gen, depth + 1);
     pi[player_id] = old_pi;
     return res;
   }

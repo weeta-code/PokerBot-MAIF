@@ -262,9 +262,9 @@ double Trainer::cfr(GameState &state, int player_id, std::vector<double> &pi, do
     std::vector<double> utils(legal_actions.size());
 
     double opponents_reach = 1.0;
-    for (int j = 0; j < (int)pi.size(); ++j) {
-      if (j == player_id) continue;
-      opponents_reach *= pi[j];
+    for (auto& p : state.players) {
+      if (p.id == player_id) continue;
+      opponents_reach *= pi[p.id];
     }
     double counterfactual_weight_prefactor = opponents_reach * chance_prob;
 
@@ -298,7 +298,9 @@ double Trainer::cfr(GameState &state, int player_id, std::vector<double> &pi, do
     GameState next_state = state;
     next_state.apply_action(legal_actions[sampled]);
 
-    return cfr(next_state, player_id, pi, chance_prob, gen, depth + 1);
+    double res = cfr(next_state, player_id, pi, chance_prob, gen, depth + 1);
+    pi[player_id] = old_pi;
+    return res;
   }
 }
 

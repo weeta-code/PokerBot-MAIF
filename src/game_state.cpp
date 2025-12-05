@@ -1,4 +1,5 @@
 #include "../include/game_state.h"
+#include <algorithm>
 #include <iomanip>
 #include <iostream>
 
@@ -176,30 +177,30 @@ void GameState::apply_action(Action action) {
 }
 
 void GameState::determine_next_state() {
-  if (is_betting_round_over()) {
-    if (stage == Stage::RIVER) {
-      type = StateType::TERMINAL;
-    } else {
-      // Round over, wait for next street cards (handled by main loop calling
-      // next_street) But for MCCFR flow, we might need to signal this. In
-      // manual mode, main loop controls street transition. So we just stay in
-      // PLAY but effectively waiting. Or we can set a flag. Let's assume main
-      // loop checks is_betting_round_over()
-    }
-  } else {
-    next_player();
-  }
+  // if (is_betting_round_over()) {
+  //   if (stage == Stage::RIVER) {
+  //     type = StateType::TERMINAL;
+  //   } else {
+  //     // Round over, wait for next street cards (handled by main loop calling
+  //     // next_street) But for MCCFR flow, we might need to signal this. In
+  //     // manual mode, main loop controls street transition. So we just stay
+  //     in
+  //     // PLAY but effectively waiting. Or we can set a flag. Let's assume
+  //     main
+  //     // loop checks is_betting_round_over()
+  //   }
+  // } else {
+  //   next_player();
+  // }
 
-  if (get_active_player_count() <= 1) {
+  if (get_active_player_count() <= 1 && stage != Stage::SHOWDOWN) {
     type = StateType::TERMINAL;
   }
 }
 
 bool GameState::is_betting_round_over() {
-  int active = 0;
   for (const auto &p : players) {
     if (!p.is_folded && !p.is_all_in) {
-      active++;
       if (!p.has_acted_this_street)
         return false;
       if (p.current_bet != current_street_highest_bet)
@@ -281,8 +282,9 @@ string GameState::compute_information_set(int player_id) {
   // Abstract action history with bet sizing
   info += abstract_action_history() + "|";
 
-  std::vector<Action> legal = get_legal_actions();
-  info += std::to_string(legal.size());
+  // std::vector<Action> legal = get_legal_actions();
+  // info += std::to_string(legal.size());
+  //
 
   return info;
 }
@@ -315,10 +317,8 @@ int GameState::abstract_pot_size(double pot_bb) const {
 
 // Abstract bet size relative to pot
 std::string GameState::abstract_bet_size(double bet_amount) const {
-  if (pot_size <= 0)
-    return "S"; // If no pot, default to small
-
-  double pot_fraction = bet_amount / pot_size;
+  double pot = std::max(pot_size, big_blind_amount);
+  double pot_fraction = bet_amount / pot;
 
   if (pot_fraction < 0.4)
     return "S"; // Small (< 1/3 pot)
@@ -342,6 +342,7 @@ std::string GameState::abstract_action_history() const {
         (action.player_id - dealer_index + num_players) % num_players;
 
     result += std::to_string(relative_pos);
+    double added = action.amount - players[action.player_id].current_bet;
 
     switch (action.type) {
     case ActionType::FOLD:
@@ -355,7 +356,7 @@ std::string GameState::abstract_action_history() const {
       break;
     case ActionType::BET:
     case ActionType::RAISE:
-      result += "R" + abstract_bet_size(action.amount);
+      result += "R" + abstract_bet_size(added);
       break;
     case ActionType::ALLIN:
       result += "A";
@@ -377,23 +378,66 @@ std::vector<Action> GameState::get_legal_actions() {
 
   if (call_amt == 0) {
     actions.emplace_back(p->id, ActionType::CHECK, 0);
-    // Simplified betting sizes for MCCFR
-    double pot = std::max(10.0, pot_size);
-    if (p->stack >= pot / 2.0)
-      actions.emplace_back(p->id, ActionType::BET, pot / 2.0);
-    if (p->stack >= pot)
-      actions.emplace_back(p->id, ActionType::BET, pot);
-    actions.emplace_back(p->id, ActionType::ALLIN, p->stack);
-  } else {
-    if (p->stack > call_amt) {
-      actions.emplace_back(p->id, ActionType::CALL, call_amt);
-      double pot = std::max(call_amt + 10.0, pot_size);
-      if (p->stack >= pot)
-        actions.emplace_back(p->id, ActionType::RAISE, pot);
-      actions.emplace_back(p->id, ActionType::ALLIN, p->stack);
+
+    double pot;
+
+    if (pot_size == 0) {
+      pot = big_blind_amount;
     } else {
-      actions.emplace_back(p->id, ActionType::CALL, p->stack);
+      pot = pot_size;
     }
+
+    double contribs[] = {0.33 * pot, 0.66 * pot, 1.00 * pot, 2.00 * pot};
+
+    for (double add_amount : contribs) {
+      if (add_amount <= p->stack) {
+        double raise_to = p->current_bet + add_amount;
+        actions.emplace_back(p->id, ActionType::BET, raise_to);
+      }
+    }
+
+    actions.emplace_back(p->id, ActionType::ALLIN, p->stack);
+
+    // if (p->stack >= pot / 2.0)
+    //  actions.emplace_back(p->id, ActionType::BET, ((double)(1/3) * pot));
+    // if (p->stack >= pot)
+    //   actions.emplace_back(p->id, ActionType::BET, pot);
+    // actions.emplace_back(p->id, ActionType::ALLIN, p->stack);
+  } else {
+
+    if (p->stack < call_amt) {
+      actions.emplace_back(p->id, ActionType::CALL, p->stack);
+    } else {
+      actions.emplace_back(p->id, ActionType::CALL, call_amt);
+    }
+
+    if (p->stack > call_amt) {
+      double pot = std::max(pot_size, big_blind_amount);
+
+      double contribs[] = {0.33 * pot, 0.66 * pot, 1.00 * pot, 2.00 * pot};
+
+      for (double add_amount : contribs) {
+        double raise_to = p->current_bet + add_amount;
+
+        // Valid raise: must beat the highest bet
+        if (raise_to > current_street_highest_bet &&
+            (raise_to - p->current_bet) <= p->stack) {
+          actions.emplace_back(p->id, ActionType::RAISE, raise_to);
+        }
+      }
+
+      actions.emplace_back(p->id, ActionType::ALLIN, p->stack);
+    }
+
+    // if (p->stack > call_amt) {
+    //   actions.emplace_back(p->id, ActionType::CALL, call_amt);
+    //   double pot = std::max(call_amt + 10.0, pot_size);
+    //   if (p->stack >= pot)
+    //     actions.emplace_back(p->id, ActionType::RAISE, pot);
+    //   actions.emplace_back(p->id, ActionType::ALLIN, p->stack);
+    // } else {
+    //   actions.emplace_back(p->id, ActionType::CALL, p->stack);
+    // }
   }
   return actions;
 }

@@ -1,9 +1,9 @@
 #ifndef TRAINER_H
 #define TRAINER_H
 
+#include "equity.h"
 #include "game_state.h"
 #include "node.h"
-#include "equity.h"
 #include <random>
 #include <unordered_map>
 #include <vector>
@@ -16,8 +16,9 @@ private:
   EquityModule em;
   std::unordered_map<InfoSetKey, Node *> node_map;
 
-  double cfr(GameState &state, int player_id, double history_prob,
-             std::mt19937 &gen, int depth = 0);
+  double cfr(GameState &state, int player_id, double prob_traverser,
+             double prob_opponent, double prob_chance, std::mt19937 &gen,
+             int depth = 0);
 
   std::vector<double> calculate_payoffs(GameState &state);
 

@@ -218,6 +218,9 @@ double Trainer::cfr(GameState &state, int traverser, double prob_traverser,
   }
 
   Player *curr = state.get_current_player();
+  if (!curr) {
+    return 0.0;
+  }
   int acting = curr->id;
 
   //
@@ -235,7 +238,7 @@ double Trainer::cfr(GameState &state, int traverser, double prob_traverser,
   //
   // Node lookup
   //
-  if (node_map.count(info) > 0)
+  if (node_map.count(info) <= 0)
     node_map[info] = new Node(legal.size());
 
   Node *node = node_map[info];

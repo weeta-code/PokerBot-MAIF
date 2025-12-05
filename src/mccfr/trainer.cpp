@@ -183,30 +183,30 @@ double Trainer::cfr(GameState &state, int player_id, std::vector<double> &pi, do
     return get_terminal_payoff(state, player_id);
   }
 
-  // // Handle betting round transitions
-  // if (state.is_betting_round_over() && state.stage != Stage::SHOWDOWN) {
-  //   // Check if we need to deal cards (chance node)
-  //   if (state.stage == Stage::PREFLOP && state.community_cards.empty()) {
-  //     // Deal flop (3 cards)
-  //     deal_random_community_cards(state, 3, gen);
-  //     state.stage = Stage::FLOP;
-  //     state.next_street();
-  //   } else if (state.stage == Stage::FLOP &&
-  //              state.community_cards.size() == 3) {
-  //     // Deal turn (1 card)
-  //     deal_random_community_cards(state, 1, gen);
-  //     state.stage = Stage::TURN;
-  //     state.next_street();
-  //   } else if (state.stage == Stage::TURN &&
-  //              state.community_cards.size() == 4) {
-  //     // Deal river (1 card)
-  //     deal_random_community_cards(state, 1, gen);
-  //     state.stage = Stage::RIVER;
-  //     state.next_street();
-  //   } else {
-  //     state.next_street();
-  //   }
-  // }
+  // Handle betting round transitions
+  if (state.is_betting_round_over() && state.stage != Stage::SHOWDOWN) {
+    // Check if we need to deal cards (chance node)
+    if (state.stage == Stage::PREFLOP && state.community_cards.empty()) {
+      // Deal flop (3 cards)
+      deal_random_community_cards(state, 3, gen);
+      state.stage = Stage::FLOP;
+      state.next_street();
+    } else if (state.stage == Stage::FLOP &&
+               state.community_cards.size() == 3) {
+      // Deal turn (1 card)
+      deal_random_community_cards(state, 1, gen);
+      state.stage = Stage::TURN;
+      state.next_street();
+    } else if (state.stage == Stage::TURN &&
+               state.community_cards.size() == 4) {
+      // Deal river (1 card)
+      deal_random_community_cards(state, 1, gen);
+      state.stage = Stage::RIVER;
+      state.next_street();
+    } else {
+      state.next_street();
+    }
+  }
 
   // Check terminal again after street transition
   if (state.is_terminal()) {

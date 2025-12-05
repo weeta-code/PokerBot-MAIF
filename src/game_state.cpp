@@ -475,7 +475,6 @@ std::vector<Action> GameState::get_legal_actions() {
 
   if (call_amt == 0) {
     actions.emplace_back(p->id, ActionType::CHECK, 0);
-    // Simplified betting sizes for MCCFR
     double pot = std::max(10.0, pot_size);
     if (p->stack >= pot / 2.0)
       actions.emplace_back(p->id, ActionType::BET, pot / 2.0);

@@ -26,6 +26,7 @@ enum class ActionType { FOLD, CHECK, CALL, BET, RAISE, ALLIN };
 struct Player {
   int id;
   vector<Card> hole_cards;
+  double total_bet_size = 0;
   double stack;
   double current_bet; // amount to bet in the current street
   bool is_folded;

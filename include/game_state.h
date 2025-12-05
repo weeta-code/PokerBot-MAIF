@@ -41,9 +41,10 @@ struct Action {
   int player_id;
   ActionType type;
   double amount;
+  double previous_bet;
 
   Action(int pid, ActionType t, double amt = 0)
-      : player_id(pid), type(t), amount(amt) {}
+      : player_id(pid), type(t), amount(amt), previous_bet(0) {}
 };
 
 enum class StateType { CHANCE, PLAY, TERMINAL };

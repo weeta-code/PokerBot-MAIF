@@ -92,7 +92,7 @@ void Trainer::train(int iterations, int num_players) {
 
   for (int i = 0; i < iterations; ++i) {
 
-    if (i % 500 == 0 && i > 0) {
+    if (i % 100 == 0) {
       std::cout << "Iteration " << i << "/" << iterations
                 << " — nodes=" << node_map.size() << "\n";
     }
@@ -108,26 +108,32 @@ void Trainer::train(int iterations, int num_players) {
 
     // External sampling: traverse from each player's perspective
     for (int traverser = 0; traverser < sampled_players; ++traverser) {
+      if (i == 0)
+        std::cout << "DEBUG: Starting traverser " << traverser << "\n";
 
       GameState s(nullptr, game->equity_module);
-      s.num_players = sampled_players;
-      s.small_blind_amount = sb;
-      s.big_blind_amount = bb;
-      s.dealer_index = 0;
 
-      s.players.clear();
-      for (int pid = 0; pid < sampled_players; ++pid)
-        s.players.emplace_back(pid, stack, false);
+      // Proper initialization using correct constructor logic
+      s.init_game_setup(sampled_players, stack, sb, bb);
 
+      // start_hand() now works correctly
       s.start_hand();
+      if (i == 0)
+        std::cout << "DEBUG: Dealing hole cards\n";
       deal_random_hole_cards(s, gen);
+      if (i == 0)
+        std::cout << "DEBUG: Hole cards dealt\n";
 
       // CFR ENTRY POINT
+      if (i == 0)
+        std::cout << "DEBUG: Calling CFR\n";
       cfr(s, traverser,
           1.0, // prob_traverser
           1.0, // prob_opponent
           1.0, // prob_chance
           gen, 0);
+      if (i == 0)
+        std::cout << "DEBUG: CFR returned\n";
     }
   }
   std::cout << "Training complete: " << iterations << " iterations\n";

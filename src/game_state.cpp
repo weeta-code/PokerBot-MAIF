@@ -126,6 +126,7 @@ void GameState::next_street() {
 
 bool GameState::record_action(int player_idx, Action action) {
   Player &p = players[player_idx];
+  action.previous_bet = p.current_bet;
   history.push_back(action);
   p.has_acted_this_street = true;
 
@@ -177,25 +178,31 @@ void GameState::apply_action(Action action) {
 }
 
 void GameState::determine_next_state() {
-  // if (is_betting_round_over()) {
-  //   if (stage == Stage::RIVER) {
-  //     type = StateType::TERMINAL;
-  //   } else {
-  //     // Round over, wait for next street cards (handled by main loop calling
-  //     // next_street) But for MCCFR flow, we might need to signal this. In
-  //     // manual mode, main loop controls street transition. So we just stay
-  //     in
-  //     // PLAY but effectively waiting. Or we can set a flag. Let's assume
-  //     main
-  //     // loop checks is_betting_round_over()
-  //   }
-  // } else {
-  //   next_player();
-  // }
-
-  if (get_active_player_count() <= 1 && stage != Stage::SHOWDOWN) {
+  // If the hand ended by folding
+  if (get_active_player_count() <= 1) {
+    stage = Stage::SHOWDOWN;
     type = StateType::TERMINAL;
+    return;
   }
+
+  // If betting is not over, just rotate action
+  if (!is_betting_round_over()) {
+    next_player();
+    return;
+  }
+
+  // If betting ended and we are on RIVER, hand is terminal.
+  if (stage == Stage::RIVER) {
+    stage = Stage::SHOWDOWN;
+    type = StateType::TERMINAL;
+    return;
+  }
+
+  // Otherwise:
+  // *** IMPORTANT ***
+  // DO NOT MOVE STREETS HERE.
+  // CFR will call next_street() after dealing flop/turn/river.
+  return;
 }
 
 bool GameState::is_betting_round_over() {
@@ -282,13 +289,12 @@ string GameState::compute_information_set(int player_id) {
   // Abstract action history with bet sizing
   info += abstract_action_history() + "|";
 
-  // std::vector<Action> legal = get_legal_actions();
-  // info += std::to_string(legal.size());
-  //
+  // Make info-set unique per distinct action count
+  auto legal = get_legal_actions();
+  info += std::to_string(legal.size()) + "|";
 
   return info;
 }
-
 // Abstract stack into buckets based on big blinds
 int GameState::abstract_stack_size(double stack_bb) const {
   if (stack_bb < 10)
@@ -342,7 +348,7 @@ std::string GameState::abstract_action_history() const {
         (action.player_id - dealer_index + num_players) % num_players;
 
     result += std::to_string(relative_pos);
-    double added = action.amount - players[action.player_id].current_bet;
+    double added = action.amount - action.previous_bet;
 
     switch (action.type) {
     case ActionType::FOLD:
@@ -404,7 +410,7 @@ std::vector<Action> GameState::get_legal_actions() {
     //   actions.emplace_back(p->id, ActionType::BET, pot);
     // actions.emplace_back(p->id, ActionType::ALLIN, p->stack);
   } else {
-
+    // Facing a bet
     if (p->stack < call_amt) {
       actions.emplace_back(p->id, ActionType::CALL, p->stack);
     } else {
@@ -413,31 +419,20 @@ std::vector<Action> GameState::get_legal_actions() {
 
     if (p->stack > call_amt) {
       double pot = std::max(pot_size, big_blind_amount);
-
-      double contribs[] = {0.33 * pot, 0.66 * pot, 1.00 * pot, 2.00 * pot};
+      // Use (pot + call_amt) as base for raise sizing
+      double base = pot + call_amt;
+      double contribs[] = {0.33 * base, 0.66 * base, 1.00 * base, 2.00 * base};
 
       for (double add_amount : contribs) {
-        double raise_to = p->current_bet + add_amount;
+        double raise_to = current_street_highest_bet + add_amount;
 
-        // Valid raise: must beat the highest bet
         if (raise_to > current_street_highest_bet &&
             (raise_to - p->current_bet) <= p->stack) {
           actions.emplace_back(p->id, ActionType::RAISE, raise_to);
         }
       }
-
       actions.emplace_back(p->id, ActionType::ALLIN, p->stack);
     }
-
-    // if (p->stack > call_amt) {
-    //   actions.emplace_back(p->id, ActionType::CALL, call_amt);
-    //   double pot = std::max(call_amt + 10.0, pot_size);
-    //   if (p->stack >= pot)
-    //     actions.emplace_back(p->id, ActionType::RAISE, pot);
-    //   actions.emplace_back(p->id, ActionType::ALLIN, p->stack);
-    // } else {
-    //   actions.emplace_back(p->id, ActionType::CALL, p->stack);
-    // }
   }
   return actions;
 }

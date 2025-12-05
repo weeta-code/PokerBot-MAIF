@@ -51,6 +51,7 @@ enum class StateType { CHANCE, PLAY, TERMINAL };
 struct GameState {
   vector<Player> players;
   vector<Card> community_cards; // Manual input
+  vector<Card> deck;
 
   std::vector<Action> history;
 
@@ -94,8 +95,12 @@ struct GameState {
 
   // MCCFR Support
   bool is_terminal();
+  bool is_chance();
   string compute_information_set(int player_id);
   Player *get_player(int player_id);
+  std::vector<pair<GameState, double>> get_chance_outcomes(GameState &state);
+  void remove_from_deck(GameState &state, Card c);
+  std::vector<Card> update_remaining_deck(GameState &state);
 
   // Abstraction Helpers
   int abstract_stack_size(double stack_bb) const;

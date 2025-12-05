@@ -16,7 +16,7 @@ private:
   EquityModule em;
   std::unordered_map<InfoSetKey, Node *> node_map;
 
-  double cfr(GameState &state, int player_id, double history_prob,
+  double cfr(GameState &state, int player_id, std::vector<double> &pi, double history_prob,
              std::mt19937 &gen, int depth = 0);
 
   std::vector<double> calculate_payoffs(GameState &state);

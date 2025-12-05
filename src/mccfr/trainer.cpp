@@ -171,9 +171,8 @@ double Trainer::get_terminal_payoff(GameState &state, int player_id) {
 }
 
 
-double Trainer::cfr(GameState &state, int player_id, double history_prob,
+double Trainer::cfr(GameState &state, int player_id, std::vector<double> &pi, double history_prob,
                     std::mt19937 &gen, int depth) {
-  // Removed depth limit to allow full tree exploration
 
   // Terminal state: return utility
   if (state.is_terminal()) {
@@ -181,8 +180,6 @@ double Trainer::cfr(GameState &state, int player_id, double history_prob,
     if (!p)
       return 0.0;
     return get_terminal_payoff(state, player_id);
-    // double utility = p->stack - 1000.0;
-    /// return utility;
   }
 
   // Handle betting round transitions
@@ -216,13 +213,23 @@ double Trainer::cfr(GameState &state, int player_id, double history_prob,
     if (!p)
       return 0.0;
     return get_terminal_payoff(state, player_id);
-    // double utility = p->stack - 1000.0;
-    // return utility;
   }
 
   Player *curr_player = state.get_current_player();
   if (!curr_player) {
     return 0.0;
+  }
+
+  if (state.is_chance()) {
+    double value_sum = 0.0;
+    auto chance_outcomes = get_chance_outcomes(state); // vector<pair<GameState, double>>
+    for (auto &out : chance_outcomes) {
+      GameState next_state = out.first;
+      double p = out.second; // probability of this chance outcome conditional on reaching this chance node
+      // recurse: chance_prob multiplies by p; player reach probs (pi) unchanged
+      value_sum += p * cfr(next_state, traverser_id, pi, chance_prob * p, gen, depth + 1);
+    }
+    return value_sum;
   }
 
   std::string info_set = state.compute_information_set(curr_player->id);

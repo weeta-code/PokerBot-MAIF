@@ -12,7 +12,13 @@ GameState::GameState(RiskProfiler *rp, EquityModule *em)
     : risk_profiler(rp), equity_module(em), pot_size(0),
       current_street_highest_bet(0), num_players(0), dealer_index(0),
       current_player_index(0), small_blind_amount(0), big_blind_amount(0),
-      stage(Stage::START), type(StateType::CHANCE) {}
+      stage(Stage::START), type(StateType::CHANCE) {
+      for (int r = 0; r < 13; ++r) {
+        for (int s = 0; s < 4; ++s) {
+          deck.emplace_back(static_cast<Rank>(r), static_cast<Suit>(s));
+        }
+      }
+      }
 
 void GameState::init_game_setup(int n_players, double stack_size, double sb,
                                 double bb) {
@@ -240,6 +246,8 @@ Player *GameState::get_player(int player_id) {
 
 bool GameState::is_terminal() { return type == StateType::TERMINAL; }
 
+bool GameState::is_chance() { return type == StateType::CHANCE; }
+
 // MCCFR Information Set
 string GameState::compute_information_set(int player_id) {
   std::string info;
@@ -285,6 +293,89 @@ string GameState::compute_information_set(int player_id) {
   info += std::to_string(legal.size());
 
   return info;
+}
+
+void GameState::remove_from_deck(GameState &state, Card c) {
+  if (std::find(state.deck.begin(), state.deck.end(), c) != state.deck.end())
+    state.deck.erase(std::remove(state.deck.begin(), state.deck.end(), c), state.deck.end());
+}
+
+std::vector<Card> GameState::update_remaining_deck(GameState &state) {
+  for (int i = 0; i < state.num_players; ++i) {
+    Player* p = state.get_player(i);
+    for (Card c : p->hole_cards) {
+      state.deck.erase(std::remove(state.deck.begin(), state.deck.end(), c), state.deck.end());
+    }
+  }
+  for (Card c : state.community_cards) {
+    state.deck.erase(std::remove(state.deck.begin(), state.deck.end(), c), state.deck.end());
+  } 
+
+  return state.deck;
+}
+
+std::vector<pair<GameState, double>> GameState::get_chance_outcomes(GameState &state) {
+      vector<pair<GameState, double>> outcomes;
+
+    if (state.stage == Stage::PREFLOP) {
+        std::vector<Card> rem = state.update_remaining_deck(state);
+        int n = rem.size();
+        for (int i = 0; i < n; i++) {
+            for (int j = i+1; j < n; j++) {
+                for (int k = j+1; k < n; k++) {
+                    GameState next = state;
+                    next.community_cards.push_back(rem[i]);
+                    next.community_cards.push_back(rem[j]);
+                    next.community_cards.push_back(rem[k]);
+                    next.stage = Stage::FLOP;
+                    next.remove_from_deck(next, rem[i]);
+                    next.remove_from_deck(next, rem[j]);
+                    next.remove_from_deck(next, rem[k]);
+
+                    outcomes.emplace_back(next, 1.0);
+                }
+            }
+        }
+
+        // normalize probability
+        double p = 1.0 / outcomes.size();
+        for (auto &o : outcomes) o.second = p;
+
+        return outcomes;
+    }
+
+    if (state.stage == Stage::FLOP) {
+        std::vector<Card> rem = state.update_remaining_deck(state);
+        double p = 1.0 / rem.size();
+
+        for (Card c : rem) {
+            GameState next = state;
+            next.community_cards.push_back(c);
+            next.stage = Stage::TURN;
+            next.remove_from_deck(next, c);
+
+            outcomes.emplace_back(next, p);
+        }
+        return outcomes;
+    }
+
+    if (state.stage == Stage::TURN) {
+        std::vector<Card> rem = state.update_remaining_deck(state);
+        double p = 1.0 / rem.size();
+
+        for (Card c : rem) {
+            GameState next = state;
+            next.community_cards.push_back(c);
+            next.stage = Stage::RIVER;
+            next.remove_from_deck(next, c);
+
+            outcomes.emplace_back(next, p);
+        }
+        return outcomes;
+    }
+
+    // No chance event needed
+    return outcomes;
 }
 
 // Abstract stack into buckets based on big blinds

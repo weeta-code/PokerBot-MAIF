@@ -295,30 +295,36 @@ string GameState::compute_information_set(int player_id) {
   return info;
 }
 
-void GameState::remove_from_deck(GameState &state, Card c) {
-  if (std::find(state.deck.begin(), state.deck.end(), c) != state.deck.end())
-    state.deck.erase(std::remove(state.deck.begin(), state.deck.end(), c), state.deck.end());
+void GameState::remove_from_deck(Card c) {
+  if (std::find(deck.begin(), deck.end(), c) != deck.end()) {
+      deck.erase(std::remove(deck.begin(), deck.end(), c), deck.end());
+  }
 }
 
-std::vector<Card> GameState::update_remaining_deck(GameState &state) {
-  for (int i = 0; i < state.num_players; ++i) {
-    Player* p = state.get_player(i);
+std::vector<Card> GameState::get_remaining_deck() {
+  std::vector<Card> rem = deck;
+  for (int i = 0; i < num_players; ++i) {
+    Player* p = get_player(i);
     for (Card c : p->hole_cards) {
-      state.deck.erase(std::remove(state.deck.begin(), state.deck.end(), c), state.deck.end());
+      if (std::find(rem.begin(), rem.end(), c) != rem.end()) {
+        rem.erase(std::remove(rem.begin(), rem.end(), c), rem.end());
+      }
     }
   }
-  for (Card c : state.community_cards) {
-    state.deck.erase(std::remove(state.deck.begin(), state.deck.end(), c), state.deck.end());
+  for (Card c : community_cards) {
+    if (std::find(rem.begin(), rem.end(), c) != rem.end()) {
+      rem.erase(std::remove(rem.begin(), rem.end(), c), rem.end());
+    }
   } 
 
-  return state.deck;
+  return rem;
 }
 
 std::vector<pair<GameState, double>> GameState::get_chance_outcomes(GameState &state) {
       vector<pair<GameState, double>> outcomes;
 
     if (state.stage == Stage::PREFLOP) {
-        std::vector<Card> rem = state.update_remaining_deck(state);
+        std::vector<Card> rem = state.get_remaining_deck();
         int n = rem.size();
         for (int i = 0; i < n; i++) {
             for (int j = i+1; j < n; j++) {
@@ -328,14 +334,16 @@ std::vector<pair<GameState, double>> GameState::get_chance_outcomes(GameState &s
                     next.community_cards.push_back(rem[j]);
                     next.community_cards.push_back(rem[k]);
                     next.stage = Stage::FLOP;
-                    next.remove_from_deck(next, rem[i]);
-                    next.remove_from_deck(next, rem[j]);
-                    next.remove_from_deck(next, rem[k]);
+                    next.remove_from_deck(rem[i]);
+                    next.remove_from_deck(rem[j]);
+                    next.remove_from_deck(rem[k]);
 
                     outcomes.emplace_back(next, 1.0);
                 }
             }
         }
+
+        if (outcomes.empty()) return outcomes;
 
         // normalize probability
         double p = 1.0 / outcomes.size();
@@ -345,14 +353,14 @@ std::vector<pair<GameState, double>> GameState::get_chance_outcomes(GameState &s
     }
 
     if (state.stage == Stage::FLOP) {
-        std::vector<Card> rem = state.update_remaining_deck(state);
-        double p = 1.0 / rem.size();
+        std::vector<Card> rem = state.get_remaining_deck();
+        double p = 1.0 / (int) rem.size();
 
         for (Card c : rem) {
             GameState next = state;
             next.community_cards.push_back(c);
             next.stage = Stage::TURN;
-            next.remove_from_deck(next, c);
+            next.remove_from_deck(c);
 
             outcomes.emplace_back(next, p);
         }
@@ -360,21 +368,20 @@ std::vector<pair<GameState, double>> GameState::get_chance_outcomes(GameState &s
     }
 
     if (state.stage == Stage::TURN) {
-        std::vector<Card> rem = state.update_remaining_deck(state);
-        double p = 1.0 / rem.size();
+        std::vector<Card> rem = state.get_remaining_deck();
+        double p = 1.0 / (int) rem.size();
 
         for (Card c : rem) {
             GameState next = state;
             next.community_cards.push_back(c);
             next.stage = Stage::RIVER;
-            next.remove_from_deck(next, c);
+            next.remove_from_deck(c);
 
             outcomes.emplace_back(next, p);
         }
         return outcomes;
     }
 
-    // No chance event needed
     return outcomes;
 }
 

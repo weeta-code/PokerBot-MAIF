@@ -128,7 +128,8 @@ void Trainer::train(int iterations, int num_players) {
       deal_random_hole_cards(fresh_state, gen);
 
       // Traverse the game tree from this player's perspective
-      cfr(fresh_state, p, 1.0, gen);
+      std::vector<double> pi(sampled_players, 1.0);
+      cfr(fresh_state, p, pi, 1.0, gen);
     }
   }
   std::cout << "Training complete: " << iterations << " iterations\n";
@@ -171,7 +172,7 @@ double Trainer::get_terminal_payoff(GameState &state, int player_id) {
 }
 
 
-double Trainer::cfr(GameState &state, int player_id, std::vector<double> &pi, double history_prob,
+double Trainer::cfr(GameState &state, int player_id, std::vector<double> &pi, double chance_prob,
                     std::mt19937 &gen, int depth) {
 
   // Terminal state: return utility
@@ -182,30 +183,30 @@ double Trainer::cfr(GameState &state, int player_id, std::vector<double> &pi, do
     return get_terminal_payoff(state, player_id);
   }
 
-  // Handle betting round transitions
-  if (state.is_betting_round_over() && state.stage != Stage::SHOWDOWN) {
-    // Check if we need to deal cards (chance node)
-    if (state.stage == Stage::PREFLOP && state.community_cards.empty()) {
-      // Deal flop (3 cards)
-      deal_random_community_cards(state, 3, gen);
-      state.stage = Stage::FLOP;
-      state.next_street();
-    } else if (state.stage == Stage::FLOP &&
-               state.community_cards.size() == 3) {
-      // Deal turn (1 card)
-      deal_random_community_cards(state, 1, gen);
-      state.stage = Stage::TURN;
-      state.next_street();
-    } else if (state.stage == Stage::TURN &&
-               state.community_cards.size() == 4) {
-      // Deal river (1 card)
-      deal_random_community_cards(state, 1, gen);
-      state.stage = Stage::RIVER;
-      state.next_street();
-    } else {
-      state.next_street();
-    }
-  }
+  // // Handle betting round transitions
+  // if (state.is_betting_round_over() && state.stage != Stage::SHOWDOWN) {
+  //   // Check if we need to deal cards (chance node)
+  //   if (state.stage == Stage::PREFLOP && state.community_cards.empty()) {
+  //     // Deal flop (3 cards)
+  //     deal_random_community_cards(state, 3, gen);
+  //     state.stage = Stage::FLOP;
+  //     state.next_street();
+  //   } else if (state.stage == Stage::FLOP &&
+  //              state.community_cards.size() == 3) {
+  //     // Deal turn (1 card)
+  //     deal_random_community_cards(state, 1, gen);
+  //     state.stage = Stage::TURN;
+  //     state.next_street();
+  //   } else if (state.stage == Stage::TURN &&
+  //              state.community_cards.size() == 4) {
+  //     // Deal river (1 card)
+  //     deal_random_community_cards(state, 1, gen);
+  //     state.stage = Stage::RIVER;
+  //     state.next_street();
+  //   } else {
+  //     state.next_street();
+  //   }
+  // }
 
   // Check terminal again after street transition
   if (state.is_terminal()) {
@@ -222,12 +223,11 @@ double Trainer::cfr(GameState &state, int player_id, std::vector<double> &pi, do
 
   if (state.is_chance()) {
     double value_sum = 0.0;
-    auto chance_outcomes = get_chance_outcomes(state); // vector<pair<GameState, double>>
+    auto chance_outcomes = state.get_chance_outcomes(state); 
     for (auto &out : chance_outcomes) {
       GameState next_state = out.first;
-      double p = out.second; // probability of this chance outcome conditional on reaching this chance node
-      // recurse: chance_prob multiplies by p; player reach probs (pi) unchanged
-      value_sum += p * cfr(next_state, traverser_id, pi, chance_prob * p, gen, depth + 1);
+      double p = out.second; 
+      value_sum += p * cfr(next_state, player_id, pi, chance_prob * p, gen, depth + 1);
     }
     return value_sum;
   }
@@ -261,18 +261,30 @@ double Trainer::cfr(GameState &state, int player_id, std::vector<double> &pi, do
     double node_util = 0.0;
     std::vector<double> utils(legal_actions.size());
 
+    double opponents_reach = 1.0;
+    for (int j = 0; j < (int)pi.size(); ++j) {
+      if (j == player_id) continue;
+      opponents_reach *= pi[j];
+    }
+    double counterfactual_weight_prefactor = opponents_reach * chance_prob;
+
     for (size_t i = 0; i < legal_actions.size(); ++i) {
       GameState next_state = state;
       next_state.apply_action(legal_actions[i]);
 
-      utils[i] = cfr(next_state, player_id, history_prob * strategy[i], gen, depth + 1);
+      double old_pi_curr = pi[player_id];
+      pi[player_id] = old_pi_curr * strategy[i];
+
+      utils[i] = cfr(next_state, player_id, pi, chance_prob, gen, depth + 1);
+      pi[player_id] = old_pi_curr;
+
       node_util += strategy[i] * utils[i];
     }
 
     // Update Regrets
     for (size_t i = 0; i < legal_actions.size(); ++i) {
       double regret = utils[i] - node_util;
-      node->update_regret_sum(i, regret);
+      node->update_regret_sum(i, counterfactual_weight_prefactor * regret);
     }
     return node_util;
   } else {
@@ -280,10 +292,13 @@ double Trainer::cfr(GameState &state, int player_id, std::vector<double> &pi, do
     std::discrete_distribution<> dist(strategy.begin(), strategy.end());
     int sampled = dist(gen);
 
+    double old_pi = pi[curr_player->id];
+    pi[curr_player->id] = old_pi * strategy[sampled];
+
     GameState next_state = state;
     next_state.apply_action(legal_actions[sampled]);
 
-    return cfr(next_state, player_id, history_prob * strategy[sampled], gen, depth + 1);
+    return cfr(next_state, player_id, pi, chance_prob, gen, depth + 1);
   }
 }
 

@@ -99,8 +99,8 @@ struct GameState {
   string compute_information_set(int player_id);
   Player *get_player(int player_id);
   std::vector<pair<GameState, double>> get_chance_outcomes(GameState &state);
-  void remove_from_deck(GameState &state, Card c);
-  std::vector<Card> update_remaining_deck(GameState &state);
+  void remove_from_deck(Card c);
+  std::vector<Card> get_remaining_deck();
 
   // Abstraction Helpers
   int abstract_stack_size(double stack_bb) const;

@@ -229,7 +229,7 @@ double Trainer::cfr(GameState &state, int traverser, double prob_traverser,
   //
   // Node lookup
   //
-  if (std::find(node_map.begin(), node_map.end(), info) != node_map.end())
+  if (node_map.count(info) > 0)
     node_map[info] = new Node(legal.size());
 
   Node *node = node_map[info];
@@ -290,7 +290,7 @@ double Trainer::cfr(GameState &state, int traverser, double prob_traverser,
 //
 
 std::vector<double> Trainer::get_strategy(const std::string &info) {
-  if (std::find(node_map.begin(), node_map.end(), info) != node_map.end())
+  if (node_map.count(info) > 0)
     return node_map[info]->get_average_strategy();
   return {};
 }

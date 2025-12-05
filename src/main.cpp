@@ -248,12 +248,30 @@ void solver_mode(Trainer &trainer) {
           selected = Action(p->id, ActionType::RAISE, amt);
       }
 
+      p->total_bet_size += p->current_bet;
       game.apply_action(selected);
 
       // Check for Street Transition
       if (game.is_betting_round_over()) {
-        if (game.stage == Stage::RIVER) {
+        int num_folded = 0;
+        for (auto& p : game.players) {
+          if (p.is_folded)
+            num_folded += p.is_folded; 
+        }
+
+        if (game.stage == Stage::SHOWDOWN || num_folded == game.num_players - 1) {
           cout << "Hand Over (Showdown)\n";
+          for (Player p : game.players) {
+            cout << "Did player "
+                  << (p.id)
+                  << " win? (y/n): ";
+            string ans;
+            getline(cin, ans);
+            if (ans != "y")
+              p.stack -= p.total_bet_size;
+            if (ans == "y")
+              p.stack += game.pot_size;
+          }
           break;
         } else {
           // Advance Street & Ask for Cards

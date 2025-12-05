@@ -9,7 +9,7 @@
 // Removed depth limit - let CFR explore freely
 // static const int MAX_CFR_DEPTH = 50;
 
-Trainer::Trainer(GameState *g) : game(g) {}
+Trainer::Trainer(GameState *g) : game(g), em() {}
 
 Trainer::~Trainer() {
   for (auto &itr : node_map) {
@@ -134,6 +134,43 @@ void Trainer::train(int iterations, int num_players) {
   std::cout << "Training complete: " << iterations << " iterations\n";
 }
 
+std::vector<double> Trainer::calculate_payoffs(GameState &state) {
+  int pot = state.pot_size;
+  std::vector<int> ranks(state.num_players, 0);
+  int max = 0;
+  for (int i = 0; i < state.num_players; ++i) {
+    Player* p = state.get_player(i);
+    if (p->is_folded) {
+        ranks[i] = -pot;
+    }
+
+    std::vector<Card> hand;
+
+    hand.insert(hand.end(), p->hole_cards.begin(), p->hole_cards.end());
+    hand.insert(hand.end(), state.community_cards.begin(), state.community_cards.end());
+
+    ranks[i] = em.evaluate_7_cards(hand);
+    max = std::max(max, ranks[i]);
+  }
+
+  std::vector<double> terminal_payoffs(state.num_players, 0);
+
+  for (int i = 0; i < state.num_players; ++i) {
+    if (ranks[i] == max)
+      terminal_payoffs[i] = pot;
+    else
+      terminal_payoffs[i] = -state.get_player(i)->current_bet;
+  }
+
+  return terminal_payoffs;
+}
+
+double Trainer::get_terminal_payoff(GameState &state, int player_id) {
+  std::vector<double> payoffs = calculate_payoffs(state);
+  return payoffs[player_id];
+}
+
+
 double Trainer::cfr(GameState &state, int player_id, double history_prob,
                     std::mt19937 &gen, int depth) {
   // Removed depth limit to allow full tree exploration
@@ -143,8 +180,9 @@ double Trainer::cfr(GameState &state, int player_id, double history_prob,
     Player *p = state.get_player(player_id);
     if (!p)
       return 0.0;
-    double utility = p->stack - 1000.0;
-    return utility;
+    get_terminal_payoff(state, player_id);
+    // double utility = p->stack - 1000.0;
+    /// return utility;
   }
 
   // Handle betting round transitions
@@ -177,8 +215,9 @@ double Trainer::cfr(GameState &state, int player_id, double history_prob,
     Player *p = state.get_player(player_id);
     if (!p)
       return 0.0;
-    double utility = p->stack - 1000.0;
-    return utility;
+    get_terminal_payoff(state, player_id);
+    // double utility = p->stack - 1000.0;
+    // return utility;
   }
 
   Player *curr_player = state.get_current_player();

@@ -185,7 +185,6 @@ void solver_mode(Trainer &trainer) {
 
         cout << "\n*** Solver Recommendation ***\n";
         if (!probs.empty()) {
-  
           // int max_idx = 0;
           // for (size_t i = 1; i < probs.size(); ++i) {
           //   if (probs[i] > probs[max_idx])

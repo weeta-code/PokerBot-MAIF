@@ -27,7 +27,7 @@ struct Player {
   int id;
   vector<Card> hole_cards;
   double stack;
-  double total_bet_size;
+  double total_bet_size = 0;
   double current_bet; // amount to bet in the current street
   bool is_folded;
   bool is_all_in;

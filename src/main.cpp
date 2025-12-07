@@ -171,7 +171,8 @@ void solver_mode(Trainer &trainer) {
       double to_call = game.current_street_highest_bet - p->current_bet;
       cout << "\n  Stack: " << std::fixed << std::setprecision(2) << p->stack;
       cout << " | Current Bet: " << p->current_bet;
-      cout << " | To Call: " << to_call << "\n";
+      cout << " | To Call: " << to_call;
+      cout << " | Cumulative Bets: " << p->total_bet_size << "\n";
 
       if (!p->is_human) {
         cout << "  " << rp.get_formatted_stats(p->id) << "\n";
@@ -248,7 +249,6 @@ void solver_mode(Trainer &trainer) {
           selected = Action(p->id, ActionType::RAISE, amt);
       }
 
-      p->total_bet_size += p->current_bet;
       game.apply_action(selected);
 
       // Check for Street Transition
@@ -267,10 +267,22 @@ void solver_mode(Trainer &trainer) {
                   << " win? (y/n): ";
             string ans;
             getline(cin, ans);
-            if (ans != "y")
+            if (ans == "n") {
               p.stack -= p.total_bet_size;
-            if (ans == "y")
+              cout << "Subtracted "
+                    << (p.total_bet_size)
+                    << " from player"
+                    << (p.id)
+                    << "\n";
+            }
+            else if (ans == "y") {
               p.stack += game.pot_size;
+              cout << "Added "
+                    << (game.pot_size)
+                    << " to player"
+                    << (p.id)
+                    << "\n";
+            }
           }
           break;
         } else {

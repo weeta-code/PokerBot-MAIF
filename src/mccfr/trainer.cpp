@@ -150,7 +150,7 @@ std::vector<double> Trainer::calculate_payoffs(GameState &state) {
     Player *p = state.get_player(i);
 
     if (p->is_folded) {
-      payoff[i] = -p->current_bet;
+      payoff[i] = -p->total_bet_size;
       continue;
     }
 
@@ -171,7 +171,7 @@ std::vector<double> Trainer::calculate_payoffs(GameState &state) {
     } else if (rank[i] == best_rank) {
       payoff[i] = pot;
     } else {
-      payoff[i] = -p->current_bet;
+      payoff[i] = -p->total_bet_size;
     }
   }
 

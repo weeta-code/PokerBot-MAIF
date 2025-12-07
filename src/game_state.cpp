@@ -24,12 +24,14 @@ void GameState::init_game_setup(int n_players, double stack_size, double sb,
   players.clear();
   // Player 0 is Human
   players.emplace_back(0, stack_size, true);
+  players[0].total_bet_size = 0;
   if (risk_profiler)
     risk_profiler->add_player(0, stack_size);
 
   // Others are Bots
   for (int i = 1; i < num_players; i++) {
     players.emplace_back(i, stack_size, false);
+    players[i].total_bet_size = 0;
     if (risk_profiler)
       risk_profiler->add_player(i, stack_size);
   }
@@ -164,10 +166,12 @@ bool GameState::record_action(int player_idx, Action action) {
 
   p.stack -= amount_added;
   p.current_bet += amount_added;
+  p.total_bet_size += amount_added;
   pot_size += amount_added;
 
   if (p.stack == 0)
     p.is_all_in = true;
+    p.total_bet_size = amount_added;
 
   return true;
 }

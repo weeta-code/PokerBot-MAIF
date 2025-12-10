@@ -257,7 +257,6 @@ bool GameState::is_terminal() { return type == StateType::TERMINAL || stage == S
 
 // MCCFR Information Set
 string GameState::compute_information_set(int player_id) {
-  std::string info;
   Player *p = get_player(player_id);
   if (!p)
     return "INVALID";
@@ -270,46 +269,22 @@ string GameState::compute_information_set(int player_id) {
   else if (stage == Stage::RIVER)
     st = RIVER;
 
+  // bucketization
   int bucket = 0;
   if (equity_module && p->hole_cards.size() >= 2) {
     bucket = equity_module->bucketize_hand(p->hole_cards, community_cards, st);
   }
 
-  for (auto c : p->hole_cards) {
-    info += c.to_string();
-  }
-  if (!p->hole_cards.empty()) {
-    info += "|";
-  }
-  for (auto c : community_cards) {
-    info += c.to_string();
-  }
-  if (!community_cards.empty()) {
-    info += "|";
-  }
-  
-  // info += std::to_string(bucket) + "|";
+  // create keys
+  std::string info = "";
+  info += std::to_string(bucket) + "|";
   info += std::to_string((int)stage) + "|";
-
-  // ABSTRACTION: Normalize to big blinds
-  double bb = big_blind_amount;
-  if (bb <= 0)
-    bb = 1.0; // Safety check
-
-  // Abstract stack size to buckets
-  // double stack_bb = p->stack / bb;
-  // int stack_bucket = abstract_stack_size(stack_bb);
-  // info += std::to_string(stack_bucket) + "|";
-
-  // Abstract pot size to buckets
-  // double pot_bb = pot_size / bb;
-  // int pot_bucket = abstract_pot_size(pot_bb);
-  // info += std::to_string(pot_bucket) + "|";
-
-  // Abstract action history with bet sizing
   info += abstract_action_history() + "|";
 
-  // Make info-set unique per distinct action count
+  // append the number of legal actions to the key
+  // if not, states with different action counts will map to the same Node,
+  // causing an out-of-bounds write in the regret vector
+  // and seg faults
   auto legal = get_legal_actions();
   info += std::to_string(legal.size()) + "|";
 

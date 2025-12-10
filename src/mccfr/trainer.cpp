@@ -148,12 +148,12 @@ std::vector<double> Trainer::calculate_payoffs(GameState &state) {
   int best_rank = -1;
   std::vector<int> rank(state.num_players, -9999);
 
+  // 1. Evaluate hands for all active players
   for (int i = 0; i < state.num_players; ++i) {
     Player *p = state.get_player(i);
 
     if (p->is_folded) {
-      payoff[i] = -p->total_bet_size;
-      continue;
+      continue; // Folded players don't need evaluation
     }
 
     std::vector<Card> hand;
@@ -165,13 +165,24 @@ std::vector<double> Trainer::calculate_payoffs(GameState &state) {
     best_rank = std::max(best_rank, rank[i]);
   }
 
+  // 2. Count winners (to handle split pots)
+  int winner_count = 0;
+  for (int i = 0; i < state.num_players; ++i) {
+    if (!state.get_player(i)->is_folded && rank[i] == best_rank) {
+      winner_count++;
+    }
+  }
+
+  // 3. Distribute Payoffs
   for (int i = 0; i < state.num_players; ++i) {
     Player *p = state.get_player(i);
 
     if (p->is_folded) {
-      // already set: payoff[i] = -p->current_bet;
+      payoff[i] = -p->total_bet_size;
     } else if (rank[i] == best_rank) {
-      payoff[i] = pot - p->total_bet_size;
+      // Correctly divide pot among winners
+      double share = (double)pot / winner_count;
+      payoff[i] = share - p->total_bet_size;
     } else {
       payoff[i] = -p->total_bet_size;
     }
@@ -194,25 +205,17 @@ double Trainer::cfr(GameState &state, int traverser, double prob_traverser,
     return get_terminal_payoff(state, traverser);
 
   //
-  // STREET TRANSITION 
+  // STREET TRANSITION
   //
   if (state.is_betting_round_over() && state.stage != Stage::SHOWDOWN) {
     if (state.stage == Stage::PREFLOP && state.community_cards.empty()) {
       deal_random_community_cards(state, 3, gen);
-      // state.stage = Stage::FLOP;
-      // state.next_street();
     } else if (state.stage == Stage::FLOP &&
                state.community_cards.size() == 3) {
       deal_random_community_cards(state, 1, gen);
-      // state.stage = Stage::TURN;
-      // state.next_street();
     } else if (state.stage == Stage::TURN &&
                state.community_cards.size() == 4) {
       deal_random_community_cards(state, 1, gen);
-      // state.stage = Stage::RIVER;
-      // state.next_street();
-    } else {
-      // state.next_street();
     }
     state.next_street();
 
@@ -226,14 +229,10 @@ double Trainer::cfr(GameState &state, int traverser, double prob_traverser,
   }
   int acting = curr->id;
 
-  //
-  // Build info set (your GameState no longer appends legal-action count)
-  //
+  // building info set
   std::string info = state.compute_information_set(acting);
 
-  //
-  // Legal actions according to your NEW abstraction system
-  //
+  // get legal actions
   auto legal = state.get_legal_actions();
   if (legal.empty())
     return get_terminal_payoff(state, traverser);
@@ -270,17 +269,9 @@ double Trainer::cfr(GameState &state, int traverser, double prob_traverser,
       node_util += strategy[i] * utils[i];
     }
 
-    //
-    // Regret scaled by opponent reach × chance reach
-    //
-    double scale = prob_chance;
-
-    for (size_t p = 0; p < reach.size(); ++p) {
-      if ((int) p != traverser) {
-        scale *= reach[p];
-      }   
-    }
-            
+    // In External Sampling, we do NOT scale regret by opponent reach.
+    // The sampling frequency itself provides the weighting.
+    double scale = 1.0;
 
     for (size_t i = 0; i < legal.size(); ++i) {
       double regret = (utils[i] - node_util) * scale;

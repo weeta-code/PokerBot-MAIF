@@ -4,6 +4,7 @@
 #include <iostream>
 #include <map>
 #include <random>
+#include <set>
 
 // --- Internal Hand Evaluation Logic ---
 
@@ -26,10 +27,19 @@ int EquityModule::evaluate_5_cards(const std::vector<Card> &cards) {
   }
 
   bool straight = true;
+  bool royal = true;
+  std::set<Rank> royals = {Rank::TEN, 
+                            Rank::JACK,
+                            Rank::QUEEN,
+                            Rank::KING,
+                            Rank::ACE};
   for (size_t i = 0; i < 4; ++i) {
     if (sorted[i].rank != sorted[i + 1].rank + 1) {
       straight = false;
       break;
+    }
+    if (royals.find(sorted[i].rank) == royals.end()) {
+      royal = false;
     }
   }
   // Wheel case: A 5 4 3 2
@@ -62,6 +72,10 @@ int EquityModule::evaluate_5_cards(const std::vector<Card> &cards) {
       pairs++;
   }
 
+  if (straight && flush && royal)
+    return 0x900000;
+  if (straight && flush) 
+    return 0x800000;
   if (four_kind)
     return 0x700000; // Simplified score
   if (three_kind && pairs >= 1)

@@ -77,7 +77,7 @@ struct GameState {
 
   // Init
   void init_game_setup(int n_players, double stack_size, double sb, double bb);
-  void start_hand();
+  void start_hand(int input_dealer = -1);
 
   // Manual Input Methods
   void set_community_cards(const std::vector<Card> &cards);

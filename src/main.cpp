@@ -112,6 +112,19 @@ void solver_mode(Trainer &trainer) {
   game.init_game_setup(num_players, stack, sb, bb);
 
   while (true) {
+    int d_pos = -1;
+    cout << "\nEnter Dealer Position (0 to " << num_players - 1 << ") [Enter for Rotation]: ";
+    string input_pos;
+    getline(cin, input_pos);
+    
+    if (!input_pos.empty()) {
+      try {
+        d_pos = stoi(input_pos);
+      } catch (...) {
+        d_pos = -1;
+      }
+    }
+
     cout << "\n--- New Hand ---\n";
     game.start_hand();
 

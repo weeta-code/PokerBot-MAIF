@@ -39,7 +39,7 @@ void GameState::init_game_setup(int n_players, double stack_size, double sb,
   dealer_index = 0;
 }
 
-void GameState::start_hand() {
+void GameState::start_hand(int input_dealer) {
   pot_size = 0;
   current_street_highest_bet = 0;
   stage = Stage::START;
@@ -47,7 +47,15 @@ void GameState::start_hand() {
   community_cards.clear();
   history.clear();
 
-  dealer_index = (dealer_index + 1) % num_players;
+  // manual selection of the dealer
+  if (input_dealer != -1) {
+    // check input
+    dealer_index = input_dealer % num_players;
+  } else {
+    // default
+    dealer_index = (dealer_index + 1) % num_players;
+  }
+  //dealer_index = (dealer_index + 1) % num_players;
 
   if (risk_profiler)
     risk_profiler->reset_hand();

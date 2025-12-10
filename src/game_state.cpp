@@ -186,7 +186,7 @@ void GameState::apply_action(Action action, bool is_train) {
 
 void GameState::determine_next_state() {
   // If the hand ended by folding
-  if (get_active_player_count() <= 1 || stage == Stage::SHOWDOWN) {
+  if (get_active_player_count() <= 1) {
     stage = Stage::SHOWDOWN;
     type = StateType::TERMINAL;
     return;
@@ -275,7 +275,20 @@ string GameState::compute_information_set(int player_id) {
     bucket = equity_module->bucketize_hand(p->hole_cards, community_cards, st);
   }
 
-  info += std::to_string(bucket) + "|";
+  for (auto c : p->hole_cards) {
+    info += c.to_string();
+  }
+  if (!p->hole_cards.empty()) {
+    info += "|";
+  }
+  for (auto c : community_cards) {
+    info += c.to_string();
+  }
+  if (!community_cards.empty()) {
+    info += "|";
+  }
+  
+  // info += std::to_string(bucket) + "|";
   info += std::to_string((int)stage) + "|";
 
   // ABSTRACTION: Normalize to big blinds

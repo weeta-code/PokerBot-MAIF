@@ -34,6 +34,12 @@ struct Card {
     return rank == other.rank && suit == other.suit;
   }
 
+  std::string to_string() {
+    const char *ranks = "23456789TJQKA";
+    const char *suits = "cdhs";
+    return std::to_string(ranks[rank]) + suits[suit];
+  }
+
   friend std::ostream &operator<<(std::ostream &os, const Card &c) {
     const char *ranks = "23456789TJQKA";
     const char *suits = "cdhs";

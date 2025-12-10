@@ -190,7 +190,7 @@ double Trainer::cfr(GameState &state, int traverser, double prob_traverser,
   //
   // Terminal check
   //
-  if (state.is_terminal() || depth > 200)
+  if (state.is_terminal() || depth > 50)
     return get_terminal_payoff(state, traverser);
 
   //

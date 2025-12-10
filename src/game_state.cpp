@@ -275,20 +275,20 @@ string GameState::compute_information_set(int player_id) {
     bucket = equity_module->bucketize_hand(p->hole_cards, community_cards, st);
   }
 
-  for (auto c : p->hole_cards) {
-    info += c.to_string();
-  }
-  if (!p->hole_cards.empty()) {
-    info += "|";
-  }
-  for (auto c : community_cards) {
-    info += c.to_string();
-  }
-  if (!community_cards.empty()) {
-    info += "|";
-  }
+  // for (auto c : p->hole_cards) {
+  //   info += c.to_string();
+  // }
+  // if (!p->hole_cards.empty()) {
+  //   info += "|";
+  // }
+  // for (auto c : community_cards) {
+  //   info += c.to_string();
+  // }
+  // if (!community_cards.empty()) {
+  //   info += "|";
+  // }
   
-  // info += std::to_string(bucket) + "|";
+  info += std::to_string(bucket) + "|";
   info += std::to_string((int)stage) + "|";
 
   // ABSTRACTION: Normalize to big blinds

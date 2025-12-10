@@ -27,7 +27,7 @@ struct Player {
   int id;
   vector<Card> hole_cards;
   double stack;
-  double total_bet_size = 0;
+  double total_bet_size;
   double current_bet; // amount to bet in the current street
   bool is_folded;
   bool is_all_in;
@@ -90,9 +90,9 @@ struct GameState {
   bool is_betting_round_over();
 
   // Actions
-  bool record_action(int player_idx, Action action);
+  bool record_action(int player_idx, Action action, bool is_train);
   std::vector<Action> get_legal_actions();
-  void apply_action(Action action);
+  void apply_action(Action action, bool is_train);
 
   // MCCFR Support
   bool is_terminal();

@@ -101,6 +101,7 @@ void Trainer::train(int iterations, int num_players) {
     int sampled_players = player_counts[gen() % player_counts.size()];
     double stack_bb = stack_bb_options[gen() % stack_bb_options.size()];
 
+    sampled_players = 5;
     // Fixed blinds (abstraction normalizes anyway)
     double bb = 2.0;
     double sb = 1.0;
@@ -127,9 +128,10 @@ void Trainer::train(int iterations, int num_players) {
       // CFR ENTRY POINT
       if (i == 0)
         std::cout << "DEBUG: Calling CFR\n";
+        std::vector<double> reach(sampled_players, 1.0);
       cfr(s, traverser,
           1.0, // prob_traverser
-          1.0, // prob_opponent
+          reach, 
           1.0, // prob_chance
           gen, 0);
       if (i == 0)
@@ -169,7 +171,7 @@ std::vector<double> Trainer::calculate_payoffs(GameState &state) {
     if (p->is_folded) {
       // already set: payoff[i] = -p->current_bet;
     } else if (rank[i] == best_rank) {
-      payoff[i] = pot;
+      payoff[i] = pot - p->total_bet_size;
     } else {
       payoff[i] = -p->total_bet_size;
     }
@@ -183,7 +185,7 @@ double Trainer::get_terminal_payoff(GameState &state, int player_id) {
 }
 
 double Trainer::cfr(GameState &state, int traverser, double prob_traverser,
-                    double prob_opponent, double prob_chance, std::mt19937 &gen,
+                    std::vector<double> &reach, double prob_chance, std::mt19937 &gen,
                     int depth) {
   //
   // Terminal check
@@ -192,26 +194,27 @@ double Trainer::cfr(GameState &state, int traverser, double prob_traverser,
     return get_terminal_payoff(state, traverser);
 
   //
-  // STREET TRANSITION (your GameState removed its own transitions)
+  // STREET TRANSITION 
   //
   if (state.is_betting_round_over() && state.stage != Stage::SHOWDOWN) {
     if (state.stage == Stage::PREFLOP && state.community_cards.empty()) {
       deal_random_community_cards(state, 3, gen);
-      state.stage = Stage::FLOP;
-      state.next_street();
+      // state.stage = Stage::FLOP;
+      // state.next_street();
     } else if (state.stage == Stage::FLOP &&
                state.community_cards.size() == 3) {
       deal_random_community_cards(state, 1, gen);
-      state.stage = Stage::TURN;
-      state.next_street();
+      // state.stage = Stage::TURN;
+      // state.next_street();
     } else if (state.stage == Stage::TURN &&
                state.community_cards.size() == 4) {
       deal_random_community_cards(state, 1, gen);
-      state.stage = Stage::RIVER;
-      state.next_street();
+      // state.stage = Stage::RIVER;
+      // state.next_street();
     } else {
-      state.next_street();
+      // state.next_street();
     }
+    state.next_street();
 
     if (state.is_terminal())
       return get_terminal_payoff(state, traverser);
@@ -256,10 +259,13 @@ double Trainer::cfr(GameState &state, int traverser, double prob_traverser,
 
     for (size_t i = 0; i < legal.size(); ++i) {
       GameState next = state;
-      next.apply_action(legal[i]);
+      next.apply_action(legal[i], true);
+
+      std::vector<double> next_reach = reach;
+      next_reach[traverser] *= strategy[i];
 
       utils[i] = cfr(next, traverser, prob_traverser * strategy[i],
-                     prob_opponent, prob_chance, gen, depth + 1);
+                     next_reach, prob_chance, gen, depth + 1);
 
       node_util += strategy[i] * utils[i];
     }
@@ -267,7 +273,14 @@ double Trainer::cfr(GameState &state, int traverser, double prob_traverser,
     //
     // Regret scaled by opponent reach × chance reach
     //
-    double scale = prob_opponent * prob_chance;
+    double scale = prob_chance;
+
+    for (size_t p = 0; p < reach.size(); ++p) {
+      if ((int) p != traverser) {
+        scale *= reach[p];
+      }   
+    }
+            
 
     for (size_t i = 0; i < legal.size(); ++i) {
       double regret = (utils[i] - node_util) * scale;
@@ -286,9 +299,12 @@ double Trainer::cfr(GameState &state, int traverser, double prob_traverser,
   int a = dist(gen);
 
   GameState next = state;
-  next.apply_action(legal[a]);
+  next.apply_action(legal[a], true);
 
-  return cfr(next, traverser, prob_traverser, prob_opponent * strategy[a],
+  std::vector<double> next_reach = reach;
+  next_reach[acting] *= strategy[a];
+
+  return cfr(next, traverser, prob_traverser, next_reach,
              prob_chance, gen, depth + 1);
 }
 
@@ -392,213 +408,3 @@ void Trainer::load_from_file(const std::string &fn) {
     node_map[key] = node;
   }
 }
-// double Trainer::cfr(GameState &state, int player_id, double history_prob,
-//                     std::mt19937 &gen, int depth) {
-//   // Removed depth limit to allow full tree exploration
-//
-//   // Terminal state: return utility
-//   if (state.is_terminal()) {
-//     Player *p = state.get_player(player_id);
-//     if (!p)
-//       return 0.0;
-//     return get_terminal_payoff(state, player_id);
-//     // double utility = p->stack - 1000.0;
-//     /// return utility;
-//   }
-//
-//   // Handle betting round transitions
-//   if (state.is_betting_round_over() && state.stage != Stage::SHOWDOWN) {
-//     // Check if we need to deal cards (chance node)
-//     if (state.stage == Stage::PREFLOP && state.community_cards.empty()) {
-//       // Deal flop (3 cards)
-//       deal_random_community_cards(state, 3, gen);
-//       state.stage = Stage::FLOP;
-//       state.next_street();
-//     } else if (state.stage == Stage::FLOP &&
-//                state.community_cards.size() == 3) {
-//       // Deal turn (1 card)
-//       deal_random_community_cards(state, 1, gen);
-//       state.stage = Stage::TURN;
-//       state.next_street();
-//     } else if (state.stage == Stage::TURN &&
-//                state.community_cards.size() == 4) {
-//       // Deal river (1 card)
-//       deal_random_community_cards(state, 1, gen);
-//       state.stage = Stage::RIVER;
-//       state.next_street();
-//     } else {
-//       state.next_street();
-//     }
-//   }
-//
-//   // Check terminal again after street transition
-//   if (state.is_terminal()) {
-//     Player *p = state.get_player(player_id);
-//     if (!p)
-//       return 0.0;
-//     return get_terminal_payoff(state, player_id);
-//     // double utility = p->stack - 1000.0;
-//     // return utility;
-//   }
-//
-//   Player *curr_player = state.get_current_player();
-//   if (!curr_player) {
-//     return 0.0;
-//   }
-//
-//   std::string info_set = state.compute_information_set(curr_player->id);
-//   std::vector<Action> legal_actions = state.get_legal_actions();
-//
-//   if (legal_actions.empty())
-//     return 0.0;
-//
-//   if (node_map.find(info_set) == node_map.end()) {
-//     node_map[info_set] = new Node(legal_actions.size());
-//   }
-//   Node *node = node_map[info_set];
-//
-//   // External Sampling: Update strategy sum only for the traverser
-//   (player_id) double weight = (curr_player->id == player_id) ? 1.0 : 0.0;
-//   std::vector<double> strategy = node->get_strategy(weight);
-//
-//   if (strategy.size() != legal_actions.size()) {
-//     std::cerr << "Error: Action size mismatch for info_set: " << info_set
-//               << "\n";
-//     std::cerr << "Node has " << strategy.size()
-//               << " actions, but current state has " << legal_actions.size()
-//               << "\n";
-//     return 0.0;
-//   }
-//
-//   if (curr_player->id == player_id) {
-//     // Traverser: Explore ALL actions
-//     double node_util = 0.0;
-//     std::vector<double> utils(legal_actions.size());
-//
-//     for (size_t i = 0; i < legal_actions.size(); ++i) {
-//       GameState next_state = state;
-//       next_state.apply_action(legal_actions[i]);
-//
-//       utils[i] = cfr(next_state, player_id, history_prob * strategy[i], gen,
-//       depth + 1); node_util += strategy[i] * utils[i];
-//     }
-//
-//     // Update Regrets
-//     for (size_t i = 0; i < legal_actions.size(); ++i) {
-//       double regret = utils[i] - node_util;
-//       node->update_regret_sum(i, regret);
-//     }
-//     return node_util;
-//   } else {
-//     // Opponent: Sample ONE action
-//     std::discrete_distribution<> dist(strategy.begin(), strategy.end());
-//     int sampled = dist(gen);
-//
-//     GameState next_state = state;
-//     next_state.apply_action(legal_actions[sampled]);
-//
-//     return cfr(next_state, player_id, history_prob * strategy[sampled], gen,
-//     depth + 1);
-//   }
-// }
-//
-// std::vector<double> Trainer::get_strategy(const std::string &info_set) {
-//   if (node_map.find(info_set) != node_map.end()) {
-//     return node_map[info_set]->get_average_strategy();
-//   }
-//   return {};
-// }
-//
-// Action Trainer::get_action_recommendation(GameState &state, int player_id,
-//                                           std::vector<double> &probabilities)
-//                                           {
-//   std::string info_set = state.compute_information_set(player_id);
-//   std::vector<Action> legal_actions = state.get_legal_actions();
-//
-//   if (legal_actions.empty()) {
-//     probabilities.clear();
-//     return Action(-1, ActionType::FOLD, 0);
-//   }
-//
-//   probabilities = get_strategy(info_set);
-//
-//   if (probabilities.empty()) {
-//     probabilities.resize(legal_actions.size(), 1.0 / legal_actions.size());
-//   }
-//
-//   std::random_device rd;
-//   std::mt19937 gen(rd());
-//   std::discrete_distribution<> dist(probabilities.begin(),
-//   probabilities.end()); int selected = dist(gen);
-//
-//   // solved potential seg fault? making sure idx ix within legal_actions
-//   int idx = selected % legal_actions.size();
-//   return legal_actions[idx];
-// }
-//
-// void Trainer::save_to_file(const std::string &filename) {
-//   std::ofstream out(filename, std::ios::binary);
-//   if (!out) {
-//     std::cerr << "Failed to open file for writing: " << filename << "\n";
-//     return;
-//   }
-//
-//   size_t map_size = node_map.size();
-//   out.write(reinterpret_cast<const char *>(&map_size), sizeof(map_size));
-//
-//   for (const auto &[key, node] : node_map) {
-//     size_t key_len = key.size();
-//     out.write(reinterpret_cast<const char *>(&key_len), sizeof(key_len));
-//     out.write(key.c_str(), key_len);
-//
-//     // CRITICAL FIX: Save RAW strategy_sum, not normalized average
-//     std::vector<double> strat_sum = node->get_strategy_sum();
-//     size_t num_actions = strat_sum.size();
-//     out.write(reinterpret_cast<const char *>(&num_actions),
-//               sizeof(num_actions));
-//     out.write(reinterpret_cast<const char *>(strat_sum.data()),
-//               num_actions * sizeof(double));
-//   }
-//
-//   out.close();
-//   std::cout << "Saved " << map_size << " nodes to " << filename << "\n";
-// }
-//
-// void Trainer::load_from_file(const std::string &filename) {
-//   std::ifstream in(filename, std::ios::binary);
-//   if (!in) {
-//     std::cerr << "Failed to open file for reading: " << filename << "\n";
-//     return;
-//   }
-//
-//   for (auto &[key, node] : node_map) {
-//     delete node;
-//   }
-//   node_map.clear();
-//
-//   size_t map_size;
-//   in.read(reinterpret_cast<char *>(&map_size), sizeof(map_size));
-//
-//   for (size_t i = 0; i < map_size; ++i) {
-//     size_t key_len;
-//     in.read(reinterpret_cast<char *>(&key_len), sizeof(key_len));
-//
-//     std::string key(key_len, '\0');
-//     in.read(&key[0], key_len);
-//
-//     size_t num_actions;
-//     in.read(reinterpret_cast<char *>(&num_actions), sizeof(num_actions));
-//
-//     std::vector<double> strat_sum(num_actions);
-//     in.read(reinterpret_cast<char *>(strat_sum.data()),
-//             num_actions * sizeof(double));
-//
-//     // Create node and restore the RAW strategy_sum
-//     Node *node = new Node(num_actions);
-//     node->set_strategy_sum(strat_sum);
-//     node_map[key] = node;
-//   }
-//
-//   in.close();
-//   std::cout << "Loaded " << map_size << " nodes from " << filename << "\n";
-// }

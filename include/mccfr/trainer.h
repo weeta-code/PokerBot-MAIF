@@ -17,7 +17,7 @@ private:
   std::unordered_map<InfoSetKey, Node *> node_map;
 
   double cfr(GameState &state, int player_id, double prob_traverser,
-             double prob_opponent, double prob_chance, std::mt19937 &gen,
+             std::vector<double> &reach, double prob_chance, std::mt19937 &gen,
              int depth = 0);
 
   std::vector<double> calculate_payoffs(GameState &state);

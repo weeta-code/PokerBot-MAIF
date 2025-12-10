@@ -126,7 +126,7 @@ void GameState::next_street() {
   }
 }
 
-bool GameState::record_action(int player_idx, Action action) {
+bool GameState::record_action(int player_idx, Action action, bool is_train) {
   Player &p = players[player_idx];
   action.previous_bet = p.current_bet;
   history.push_back(action);
@@ -164,26 +164,29 @@ bool GameState::record_action(int player_idx, Action action) {
     return true;
   }
 
-  p.stack -= amount_added;
+  // if (!is_train) {
+    p.stack -= amount_added;
+    pot_size += amount_added;
+  // }
   p.current_bet += amount_added;
   p.total_bet_size += amount_added;
-  pot_size += amount_added;
-
-  if (p.stack == 0)
+  
+  if (p.stack == 0) {
     p.is_all_in = true;
     p.total_bet_size = amount_added;
-
+  }
+    
   return true;
 }
 
-void GameState::apply_action(Action action) {
-  record_action(action.player_id, action);
+void GameState::apply_action(Action action, bool is_train) {
+  record_action(action.player_id, action, is_train);
   determine_next_state();
 }
 
 void GameState::determine_next_state() {
   // If the hand ended by folding
-  if (get_active_player_count() <= 1) {
+  if (get_active_player_count() <= 1 || stage == Stage::SHOWDOWN) {
     stage = Stage::SHOWDOWN;
     type = StateType::TERMINAL;
     return;
@@ -250,7 +253,7 @@ Player *GameState::get_player(int player_id) {
   return nullptr;
 }
 
-bool GameState::is_terminal() { return type == StateType::TERMINAL; }
+bool GameState::is_terminal() { return type == StateType::TERMINAL || stage == Stage::SHOWDOWN; }
 
 // MCCFR Information Set
 string GameState::compute_information_set(int player_id) {
@@ -281,14 +284,14 @@ string GameState::compute_information_set(int player_id) {
     bb = 1.0; // Safety check
 
   // Abstract stack size to buckets
-  double stack_bb = p->stack / bb;
-  int stack_bucket = abstract_stack_size(stack_bb);
-  info += std::to_string(stack_bucket) + "|";
+  // double stack_bb = p->stack / bb;
+  // int stack_bucket = abstract_stack_size(stack_bb);
+  // info += std::to_string(stack_bucket) + "|";
 
   // Abstract pot size to buckets
-  double pot_bb = pot_size / bb;
-  int pot_bucket = abstract_pot_size(pot_bb);
-  info += std::to_string(pot_bucket) + "|";
+  // double pot_bb = pot_size / bb;
+  // int pot_bucket = abstract_pot_size(pot_bb);
+  // info += std::to_string(pot_bucket) + "|";
 
   // Abstract action history with bet sizing
   info += abstract_action_history() + "|";

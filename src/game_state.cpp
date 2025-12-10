@@ -297,14 +297,16 @@ string GameState::compute_information_set(int player_id) {
     bb = 1.0; // Safety check
 
   // Abstract stack size to buckets
-  // double stack_bb = p->stack / bb;
-  // int stack_bucket = abstract_stack_size(stack_bb);
-  // info += std::to_string(stack_bucket) + "|";
+  double stack_bb = p->stack / bb;
+  int stack_bucket = abstract_stack_size(stack_bb);
+  info += std::to_string(stack_bucket) + "|";
+  // info += std::to_string(p->stack);
 
   // Abstract pot size to buckets
-  // double pot_bb = pot_size / bb;
-  // int pot_bucket = abstract_pot_size(pot_bb);
-  // info += std::to_string(pot_bucket) + "|";
+  double pot_bb = pot_size / bb;
+  int pot_bucket = abstract_pot_size(pot_bb);
+  info += std::to_string(pot_bucket) + "|";
+  // info += std::to_string(pot_size);
 
   // Abstract action history with bet sizing
   info += abstract_action_history() + "|";

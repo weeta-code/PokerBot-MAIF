@@ -245,7 +245,7 @@ double Trainer::cfr(GameState &state, int traverser, double prob_traverser,
     node_map[info] = new Node(legal.size());
 
   Node *node = node_map[info];
-  std::vector<double> strategy = node->get_strategy(1.0);
+  std::vector<double> strategy = node->get_strategy(reach[curr->id]);
 
   //
   // -----------------------------------------------------

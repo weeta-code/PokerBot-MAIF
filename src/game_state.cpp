@@ -173,7 +173,6 @@ bool GameState::record_action(int player_idx, Action action, bool is_train) {
   
   if (p.stack == 0) {
     p.is_all_in = true;
-    p.total_bet_size = amount_added;
   }
     
   return true;

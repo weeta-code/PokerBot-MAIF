@@ -126,7 +126,7 @@ void solver_mode(Trainer &trainer) {
     }
 
     cout << "\n--- New Hand ---\n";
-    game.start_hand();
+    game.start_hand(d_pos);
 
     // 1. Preflop Input
     cout << "Enter Hero Cards (e.g. Ah Kd): ";
